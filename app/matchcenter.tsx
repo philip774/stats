@@ -1,50 +1,225 @@
 'use client';
-import {useEffect,useRef,useState} from 'react';
-import {ArrowUpRight,ChevronLeft,ChevronRight,CalendarDays,Star,Search,Radio,RefreshCw,X,MapPin,Activity,Info,ArrowRight,Heart,Check,Menu} from 'lucide-react';
-type Game={id:string;eventId?:string;date:string;time:string;home:string;away:string;homeScore:number|null;awayScore:number|null;periods:string;venue:string;groupId:string;group:string;region:string;status:string};
-type Feed={games:Game[];dates:string[];teams:string[];failed:string[];checkedAt:string;error?:string};
-type Detail={homeScore:number|null;awayScore:number|null;status:string;label:string;shots:number[];events:{time:string;type:string;team:string;detail:string}[];sourceUpdated:string|null;error?:string};
-const today=()=>new Intl.DateTimeFormat('sv-SE',{timeZone:'Europe/Stockholm'}).format(new Date());
-const shift=(d:string,n:number)=>{const t=new Date(d+'T12:00:00Z');t.setUTCDate(t.getUTCDate()+n);return t.toISOString().slice(0,10)};
-const label=(d:string,options:Intl.DateTimeFormatOptions)=>new Date(d+'T12:00:00Z').toLocaleDateString('sv-SE',options);
-const initials=(s:string)=>s.replace(/\b(IF|IK|HC|SK|HK|IS|GIK)\b/g,'').trim().split(' ').map(x=>x[0]).join('').slice(0,3).toUpperCase();
-function Crest({name,large=false}:{name:string;large?:boolean}){let hash=0;for(const c of name)hash+=c.charCodeAt(0);return <span className={'crest '+(large?'large':'')} style={{'--h':hash%360} as React.CSSProperties}>{initials(name)}</span>}
-export default function Matchcenter(){
- const [date,setDate]=useState(today),[region,setRegion]=useState('Alla'),[filter,setFilter]=useState('all'),[page,setPage]=useState('matches'),[query,setQuery]=useState('');
- const [feed,setFeed]=useState<Feed|null>(null),[loading,setLoading]=useState(true),[error,setError]=useState(''),[favorites,setFavorites]=useState<string[]>([]),[selected,setSelected]=useState<Game|null>(null),[detail,setDetail]=useState<Detail|null>(null),[about,setAbout]=useState(false),[teamSearch,setTeamSearch]=useState('');
- const controller=useRef<AbortController|null>(null),mounted=useRef(false);
- useEffect(()=>{try{setFavorites(JSON.parse(localStorage.getItem('tvaan-favorites')||'[]'))}catch{}mounted.current=true},[]);
- useEffect(()=>{if(mounted.current)localStorage.setItem('tvaan-favorites',JSON.stringify(favorites))},[favorites]);
- function toggle(team:string){setFavorites(old=>old.includes(team)?old.filter(t=>t!==team):[...old,team])}
- async function refresh(){controller.current?.abort();const c=new AbortController();controller.current=c;setLoading(true);try{const r=await fetch('/api/games?date='+date,{signal:c.signal});const d=await r.json() as Feed;if(!r.ok)throw new Error(d.error||'Kunde inte hämta matcher.');setFeed(d);setError('')}catch(e){if((e as Error).name!=='AbortError')setError((e as Error).message)}finally{if(!c.signal.aborted)setLoading(false)}}
- useEffect(()=>{setFeed(null);refresh();const timer=setInterval(()=>{if(document.visibilityState==='visible')refresh()},30000);const onVisible=()=>{if(document.visibilityState==='visible')refresh()};document.addEventListener('visibilitychange',onVisible);return()=>{clearInterval(timer);controller.current?.abort();document.removeEventListener('visibilitychange',onVisible)}},[date]);
- useEffect(()=>{if(!selected)return;setDetail(null);const c=new AbortController();async function load(){if(!selected?.eventId)return;try{const r=await fetch('/api/game?id='+selected.eventId,{signal:c.signal});const d=await r.json() as Detail;setDetail(d)}catch(e){if((e as Error).name!=='AbortError')setDetail({error:'Kunde inte hämta matchdetaljer.'} as Detail)}}load();const t=setInterval(load,30000);return()=>{c.abort();clearInterval(t)}},[selected?.id]);
- useEffect(()=>{if(!selected&&!about)return;const key=(e:KeyboardEvent)=>{if(e.key==='Escape'){setSelected(null);setAbout(false)}};document.addEventListener('keydown',key);const previous=document.body.style.overflow;document.body.style.overflow='hidden';return()=>{document.removeEventListener('keydown',key);document.body.style.overflow=previous}},[selected,about]);
- const games=(feed?.games||[]).filter(g=>(region==='Alla'||g.region===region)&&(filter!=='live'||g.status==='live')&&(filter!=='finished'||g.status==='finished')&&(filter!=='upcoming'||g.status==='scheduled')&&(page!=='favorites'||favorites.includes(g.home)||favorites.includes(g.away))&&(!query||(g.home+' '+g.away).toLowerCase().includes(query.toLowerCase())));
- const groups=[...new Set(games.map(g=>g.group))];const liveCount=(feed?.games||[]).filter(g=>g.status==='live').length;
- const nextDate=feed?.dates.find(d=>d>date);const prevDate=feed?.dates.filter(d=>d<date).at(-1);
- const status=(g:Game)=>g.status==='live'?'● Pågår':g.status==='finished'?'Slut':g.status==='reported'?'Rapporterat':g.time;
- return <>
- <header className="topbar"><div className="top-inner"><a className="brand" href="/" aria-label="TVÅAN startsida"><span className="brand-symbol">T<span>II</span></span>TVÅAN<span className="brand-sub">HOCKEY NÄRA DIG</span></a><div className="top-links"><span className="season">SÄSONG 2026/27</span><button onClick={()=>setAbout(true)} className="source-link">Om matchcentret <ArrowUpRight size={15}/></button></div></div></header>
- <div className="app-shell"><aside className="sidebar"><div className="sidebar-label">DITT MATCHCENTER</div><button className={'side-item '+(page==='matches'?'active':'')} onClick={()=>setPage('matches')}><Activity size={19}/>Matcher <ChevronRight size={15}/></button><button className={'side-item '+(page==='favorites'?'active':'')} onClick={()=>setPage('favorites')}><Star size={19}/>Mina lag <span className="count">{favorites.length}</span></button><div className="sidebar-label regions-label">HOCKEYTVÅAN</div>{['Alla','Syd','Väst','Öst','Norr'].map(r=><button key={r} className={'region-item '+(r===region?'chosen':'')} onClick={()=>{setRegion(r);setPage('matches')}}><span className="region-dot"/>{r==='Alla'?'Hela Sverige':'Region '+r}{r===region&&<Check size={14}/>}</button>)}<div className="sidebar-note"><span className="little-rink">II</span><b>Små orter. Stor hockey.</b><p>Varje mål, varje match.<br/>Följ hockeyn där du hör hemma.</p></div><button className="sidebar-about" onClick={()=>setAbout(true)}><Info size={16}/>Om data & uppdateringar</button></aside>
- <main><div className="eyebrow"><span className="green-dash"/> SVERIGES LOKALA HOCKEY, SAMLAD</div><section className="page-heading"><div><h1>{page==='favorites'?'Dina lag. Din hockey.':'Hockey nära dig.'}</h1><p>{page==='favorites'?'Samla dina favoriter och följ deras matcher.':'Alla regioner. Alla känslor. Följ Hockeytvåan, puck för puck.'}</p></div><div className="live-pill"><span/>Matchcenter</div></section>
- <div className="feature-band"><div className="feature-lines"/><div><span className="band-tag">HOCKEYTVÅAN · 2026/27</span><h2>Hela tvåan.<br/>Ett matchcenter.</h2><p>Resultat och matchhändelser från Swehockey.</p></div><div className="band-puck"><span>II</span></div><div className="band-bottom"><span><Radio size={14}/> Uppdateras automatiskt var 30:e sekund</span><span className="desktop-only">FRÅN NORR TILL SYD ↗</span></div></div>
- <div className="mobile-regions">{['Alla','Syd','Väst','Öst','Norr'].map(r=><button key={r} className={r===region?'selected':''} onClick={()=>setRegion(r)}>{r==='Alla'?'Hela Sverige':r}</button>)}</div>
- {page==='favorites'&&<section className="team-manager"><div className="section-title"><h2>Mina favoritlag <span>{favorites.length}</span></h2><Star size={18}/></div><p>Tryck på stjärnan för att följa ett lag. Favoriter sparas på den här enheten.</p><label className="search-box"><Search size={17}/><input placeholder="Hitta ditt lag…" value={teamSearch} onChange={e=>setTeamSearch(e.target.value)}/></label><div className="team-chips">{(feed?.teams||favorites).filter(t=>t.toLowerCase().includes(teamSearch.toLowerCase())).sort((a,b)=>Number(favorites.includes(b))-Number(favorites.includes(a))).map(t=><button key={t} className={favorites.includes(t)?'followed':''} onClick={()=>toggle(t)}><Star size={14} fill={favorites.includes(t)?'currentColor':'none'}/>{t}</button>)}</div></section>}
- <section className="scoreboard"><div className="scoreboard-top"><h2>{page==='favorites'?'Favoriternas matcher':'Matcher'}<span>{games.length}</span></h2><label className="search-box"><Search size={16}/><input aria-label="Sök match" placeholder="Sök lag…" value={query} onChange={e=>setQuery(e.target.value)}/>{query&&<button aria-label="Rensa sökning" onClick={()=>setQuery('')}><X size={14}/></button>}</label></div>
- <div className="datebar"><button className="date-arrow" aria-label="Föregående dag" onClick={()=>setDate(shift(date,-1))}><ChevronLeft size={19}/></button><div className="date-strip">{[-2,-1,0,1,2].map(n=>{const d=shift(date,n);return <button className={n===0?'current':''} key={d} onClick={()=>setDate(d)}><span>{d===today()?'IDAG':label(d,{weekday:'short'}).replace('.','').toUpperCase()}</span><b>{label(d,{day:'numeric',month:'short'}).replace('.','')}</b>{feed?.dates.includes(d)&&<i/>}</button>})}</div><button className="date-arrow" aria-label="Nästa dag" onClick={()=>setDate(shift(date,1))}><ChevronRight size={19}/></button><label className="calendar-button" aria-label="Välj datum"><CalendarDays size={19}/><input aria-label="Välj datum" type="date" value={date} onChange={e=>e.target.value&&setDate(e.target.value)}/></label></div>
- <div className="filterbar"><div className="filters">{[['all','Alla'],['live','Live'],['upcoming','Kommande'],['finished','Avslutade']].map(([id,name])=><button key={id} className={filter===id?'selected':''} onClick={()=>setFilter(id)}>{id==='live'&&<span className="live-dot"/>}{name}{id==='live'&&liveCount>0&&<b>{liveCount}</b>}</button>)}</div>{date!==today()&&<button className="today-button" onClick={()=>setDate(today())}>Till idag</button>}</div>
- {error&&<div className="error-message" role="alert"><Info size={18}/><div><b>Vi når inte Swehockey just nu</b><p>{feed?'Senast hämtade resultat visas. ':''}{error}</p></div><button onClick={refresh}>Försök igen</button></div>}
- {!error&&!!feed?.failed.length&&<div className="partial-message">Tillfälligt saknas data för {feed.failed.join(', ')}. Övriga grupper visas.</div>}
- {loading&&!feed?<div className="loading-state"><RefreshCw className="spin" size={24}/><b>Hämtar matcher från Swehockey…</b><p>Hockey från hela Sverige, på ett ställe.</p></div>:groups.length?groups.map(group=><div key={group} className="game-group"><div className="group-heading"><span className="swedish-flag"/><b>HOCKEYTVÅAN</b><span> / </span><strong>{group}</strong><small>{games.filter(g=>g.group===group).length} matcher</small></div>{games.filter(g=>g.group===group).sort((a,b)=>a.time.localeCompare(b.time)).map(g=><div className="match-row" key={g.id}><button className={'star-button '+((favorites.includes(g.home)||favorites.includes(g.away))?'starred':'')} aria-label={'Följ '+g.home} onClick={()=>toggle(g.home)}><Star size={19} fill={favorites.includes(g.home)?'currentColor':'none'}/></button><button className="match-main" onClick={()=>setSelected(g)}><div className={'match-status '+(g.status==='live'?'is-live':'')}>{status(g)}</div><div className="teams"><div><Crest name={g.home}/><span>{g.home}</span><b className={g.status==='live'?'live-score':''}>{g.homeScore??'–'}</b></div><div><Crest name={g.away}/><span>{g.away}</span><b className={g.status==='live'?'live-score':''}>{g.awayScore??'–'}</b></div></div><span className="venue"><MapPin size={13}/>{g.venue}</span><ChevronRight size={17} className="match-chevron"/></button></div>)}</div>):!error&&<div className="empty-state"><div className="empty-icon"><CalendarDays size={28}/></div><h3>{filter==='live'?'Ingen match pågår just nu':query?'Inga lag matchar din sökning':page==='favorites'?'Inga favoritmatcher den här dagen':'En lugn dag på isen'}</h3><p>{filter==='live'?'Välj Alla för att se dagens övriga matcher.':page==='favorites'?'Lägg till ditt lag ovan eller välj en annan dag.':'Inga matcher hittades med dina val. Nästa nedsläpp väntar runt hörnet.'}</p><div className="empty-actions">{filter!=='all'?<button className="primary" onClick={()=>setFilter('all')}>Visa alla matcher <ArrowRight size={16}/></button>:nextDate?<button className="primary" onClick={()=>setDate(nextDate)}>Nästa matchdag · {label(nextDate,{day:'numeric',month:'short'})}<ArrowRight size={16}/></button>:null}{prevDate&&<button className="secondary" onClick={()=>setDate(prevDate)}>Senaste resultaten</button>}</div></div>}
- <div className="scoreboard-footer"><span><span className={'connection-dot '+(error?'offline':'')}/>{loading?'Hämtar…':feed?'Hämtat '+new Date(feed.checkedAt).toLocaleTimeString('sv-SE',{hour:'2-digit',minute:'2-digit',second:'2-digit',timeZone:'Europe/Stockholm'}):'Väntar på data'} · svensk tid</span><button onClick={refresh} disabled={loading} aria-label="Uppdatera matcher"><RefreshCw size={14} className={loading?'spin':''}/>Uppdatera</button></div></section>
- <div className="below-grid"><div className="follow-card"><Star size={24}/><div><h3>Hockeyn blir bättre med ett favoritlag.</h3><p>Stjärnmarkera ditt lag och ha matcherna nära till hands.</p></div><button aria-label="Välj favoritlag" onClick={()=>{setPage('favorites');window.scrollTo({top:0,behavior:'smooth'})}}><ArrowRight size={21}/></button></div><div className="data-card"><span className="data-icon"><Check size={19}/></span><div><b>Direkt från källan</b><p>Matchdata från stats.swehockey.se.<br/>Tillgänglighet följer arrangörens rapportering.</p></div></div></div>
- <footer><span className="footer-logo">TVÅAN<span> / </span><small>FÖR KÄRLEKEN TILL LOKAL HOCKEY.</small></span><button onClick={()=>setAbout(true)}>Om matchcentret <ArrowUpRight size={13}/></button></footer>
- </main></div><nav className="mobile-nav"><button className={page==='matches'?'active':''} onClick={()=>{setPage('matches');window.scrollTo({top:0,behavior:'smooth'})}}><Activity size={21}/>Matcher</button><button className={page==='favorites'?'active':''} onClick={()=>{setPage('favorites');window.scrollTo({top:0,behavior:'smooth'})}}><Star size={21}/>Mina lag</button><button onClick={()=>setAbout(true)}><Info size={21}/>Om TVÅAN</button></nav>
- {selected&&<div className="overlay" onClick={()=>setSelected(null)}><section className="detail-panel" role="dialog" aria-modal="true" aria-label="Matchdetaljer" onClick={e=>e.stopPropagation()}><div className="dialog-top"><span>HOCKEYTVÅAN / {selected.group}</span><button autoFocus aria-label="Stäng match" onClick={()=>setSelected(null)}><X size={21}/></button></div><div className="detail-match"><div><Crest name={selected.home} large/><h3>{selected.home}</h3><button className={'follow-team '+(favorites.includes(selected.home)?'starred':'')} onClick={()=>toggle(selected.home)}><Star size={15} fill={favorites.includes(selected.home)?'currentColor':'none'}/>{favorites.includes(selected.home)?'Följer':'Följ'}</button></div><div className="detail-score"><span>{detail?.label||status(selected)}</span><b>{detail?.homeScore??selected.homeScore??'–'}<i>:</i>{detail?.awayScore??selected.awayScore??'–'}</b><small>{label(selected.date,{day:'numeric',month:'long'})} · {selected.time}</small></div><div><Crest name={selected.away} large/><h3>{selected.away}</h3><button className={'follow-team '+(favorites.includes(selected.away)?'starred':'')} onClick={()=>toggle(selected.away)}><Star size={15} fill={favorites.includes(selected.away)?'currentColor':'none'}/>{favorites.includes(selected.away)?'Följer':'Följ'}</button></div></div><p className="detail-venue"><MapPin size={14}/>{selected.venue}</p>{selected.periods&&<div className="periods">Periodresultat <b>{selected.periods}</b></div>}{detail?.shots?.length===2&&<div className="shot-stat"><b>{detail.shots[0]}</b><span>Skott på mål</span><b>{detail.shots[1]}</b></div>}<div className="events"><h3>Matchhändelser</h3>{!selected.eventId?<p className="detail-muted">Matchhändelser visas när arrangören börjar rapportera matchen.</p>:!detail?<p className="detail-muted">Hämtar matchhändelser…</p>:detail.error?<p role="alert" className="detail-muted">{detail.error}</p>:detail.events.length?detail.events.map((e,i)=><div className="event" key={i}><time>{e.time}</time><span className={/goal|\d+-\d+/i.test(e.type)?'goal-event':''}>{e.type}</span><div><b>{e.team}</b><p>{e.detail}</p></div></div>):<p className="detail-muted">Inga matchhändelser har rapporterats ännu.</p>}</div>{detail?.sourceUpdated&&<p className="detail-muted source-time">Källans senaste uppdatering: {detail.sourceUpdated}</p>}<a className="official-link" href={selected.eventId?'https://stats.swehockey.se/Game/Events/'+selected.eventId:'https://stats.swehockey.se/ScheduleAndResults/Schedule/'+selected.groupId} target="_blank" rel="noreferrer">Visa hos Swehockey <ArrowUpRight size={15}/></a></section></div>}
- {about&&<div className="overlay" onClick={()=>setAbout(false)}><section className="about-panel" role="dialog" aria-modal="true" aria-label="Om TVÅAN" onClick={e=>e.stopPropagation()}><div className="dialog-top"><span>OM MATCHCENTRET</span><button autoFocus aria-label="Stäng" onClick={()=>setAbout(false)}><X size={21}/></button></div><h2>Små orter.<br/>Stor hockey.</h2><p>TVÅAN samlar Hockeytvåans herrmatcher från nio grupper i regionerna Syd, Väst, Öst och Norr för säsongen 2026/27.</p><h3>Resultat från Swehockey</h3><p>Matchcentret hämtar officiella statistik- och matchsidor via en egen serverfeed. Det finns ingen anslutning till en dokumenterad officiell API-tjänst. Data uppdateras var 30:e sekund medan appen är öppen och synlig. Fördröjningar kan förekomma och täckningen beror på arrangörens rapportering.</p><h3>Ta med hockeyn</h3><p>Öppna appen i telefonens webbläsare. Välj ”Lägg till på hemskärmen” i webbläsarens meny för en appkänsla. Dina favoritlag sparas på enheten. Pushnotiser ingår inte.</p><a className="official-link" href="https://stats.swehockey.se" target="_blank" rel="noreferrer">Officiell statistik hos Swehockey <ArrowUpRight size={15}/></a><p className="detail-muted">Ett fristående matchcenter. Inte anslutet till Svenska Ishockeyförbundet.</p></section></div>}
- </>;
+
+import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
+import {ArrowUpRight, CalendarDays, Check, ChevronDown, ChevronLeft, ChevronRight, Info, Plus, Radio, RefreshCw, Search, SlidersHorizontal, Star, Users, X} from 'lucide-react';
+import {gameKey, mergeSavedGames, readFavoriteTeams, readSavedGames, toggleSavedGame} from '../lib/favorites.mjs';
+
+type Game = {
+  id:string; eventId?:string; date:string; time:string; home:string; away:string;
+  homeScore:number|null; awayScore:number|null; periods:string; venue:string;
+  groupId:string; group:string; region:string; status:string;
+};
+type Feed = {games:Game[]; dates:string[]; teams:string[]; failed:string[]; checkedAt:string; error?:string};
+type Detail = {homeScore:number|null; awayScore:number|null; status:string; label:string; shots:number[]; events:{time:string;type:string;team:string;detail:string}[]; sourceUpdated:string|null; error?:string};
+type Page = 'matches'|'live'|'favorites';
+type Sheet = 'teams'|'filters'|'about'|null;
+const today = () => new Intl.DateTimeFormat('sv-SE',{timeZone:'Europe/Stockholm'}).format(new Date());
+const shift = (date:string, n:number) => {const d=new Date(date+'T12:00:00Z'); d.setUTCDate(d.getUTCDate()+n); return d.toISOString().slice(0,10)};
+const dateLabel = (date:string, options:Intl.DateTimeFormatOptions) => new Date(date+'T12:00:00Z').toLocaleDateString('sv-SE',options);
+const initials = (name:string) => name.replace(/\b(IF|IK|HC|SK|HK|IS|GIK)\b/g,'').trim().split(/\s+/).map(s=>s[0]).join('').slice(0,2).toUpperCase();
+const statusLabel = (game:Game) => game.status==='live'?'Live':game.status==='finished'?'Slut':game.status==='reported'?'Resultat':game.time;
+
+function Crest({name, large=false}:{name:string;large?:boolean}) {
+  const hue = [...name].reduce((n,c)=>n+c.charCodeAt(0),0)%360;
+  return <span aria-hidden="true" className={'crest'+(large?' large':'')} style={{'--h':hue} as React.CSSProperties}>{initials(name)}</span>;
 }
 
+export default function Matchcenter() {
+  const [page,setPage]=useState<Page>('matches');
+  const [date,setDate]=useState(today);
+  const [region,setRegion]=useState('Alla');
+  const [query,setQuery]=useState('');
+  const [searchOpen,setSearchOpen]=useState(false);
+  const [onlyFollowed,setOnlyFollowed]=useState(false);
+  const [favoriteTab,setFavoriteTab]=useState<'games'|'teams'>('games');
+  const [teams,setTeams]=useState<string[]>([]);
+  const [saved,setSaved]=useState<Game[]>([]);
+  const [storageReady,setStorageReady]=useState(false);
+  const [feed,setFeed]=useState<Feed|null>(null);
+  const [extraGames,setExtraGames]=useState<Game[]>([]);
+  const [extraFailed,setExtraFailed]=useState(false);
+  const [loading,setLoading]=useState(true);
+  const [error,setError]=useState('');
+  const [selected,setSelected]=useState<Game|null>(null);
+  const [detail,setDetail]=useState<Detail|null>(null);
+  const [detailError,setDetailError]=useState('');
+  const [sheet,setSheet]=useState<Sheet>(null);
+  const [teamSearch,setTeamSearch]=useState('');
+  const [eventFilter,setEventFilter]=useState<'all'|'goals'>('all');
+  const savedRef=useRef<Game[]>([]);
+  const requestRef=useRef<AbortController|null>(null);
+  const modalRef=useRef<HTMLElement|null>(null);
+  const activeDate=page==='live'?today():date;
+  const savedDates=useMemo(()=>[...new Set(saved.map(g=>g.date))].sort().join(','),[saved]);
+  const favoriteDates=page==='favorites'&&favoriteTab==='games'?savedDates:'';
 
+  useEffect(()=>{
+    try {setTeams(readFavoriteTeams(localStorage.getItem('tvaan-favorites'))); setSaved(readSavedGames(localStorage.getItem('tvaan-games-v1')))} catch {}
+    setStorageReady(true);
+  },[]);
+  useEffect(()=>{savedRef.current=saved; if(storageReady)try{localStorage.setItem('tvaan-games-v1',JSON.stringify(saved))}catch{}},[saved,storageReady]);
+  useEffect(()=>{if(storageReady)try{localStorage.setItem('tvaan-favorites',JSON.stringify(teams))}catch{}},[teams,storageReady]);
+
+  const refresh=useCallback(async()=>{
+    requestRef.current?.abort();
+    const controller=new AbortController(); requestRef.current=controller;
+    setLoading(true);
+    try {
+      const dates=page==='favorites'&&favoriteTab==='games'?[...new Set([activeDate,...savedRef.current.map(g=>g.date)])]:[activeDate];
+      const responses=await Promise.allSettled(dates.map(async d=>{
+        const response=await fetch('/api/games?date='+d,{signal:controller.signal});
+        const result=await response.json() as Feed;
+        if(!response.ok)throw new Error(result.error||'Det gick inte att hämta matcher.');
+        return result;
+      }));
+      if(controller.signal.aborted)return;
+      const main=responses[0];
+      const fresh=responses.flatMap(r=>r.status==='fulfilled'?r.value.games:[]);
+      setExtraGames(fresh); setExtraFailed(responses.some(r=>r.status==='rejected'));
+      setSaved(old=>{
+        const updated=mergeSavedGames(old,fresh) as Game[];
+        return JSON.stringify(old)===JSON.stringify(updated)?old:updated;
+      });
+      if(main.status==='rejected')throw main.reason;
+      setFeed(main.value); setError('');
+    } catch(e) {if(!controller.signal.aborted)setError((e as Error).message)}
+    finally {if(!controller.signal.aborted)setLoading(false)}
+  },[activeDate,page,favoriteTab]);
+
+  useEffect(()=>{setFeed(null);setExtraGames([]);setError('')},[activeDate]);
+
+  useEffect(()=>{
+    refresh();
+    const timer=setInterval(()=>{if(document.visibilityState==='visible')refresh()},30000);
+    const visible=()=>{if(document.visibilityState==='visible')refresh()};
+    document.addEventListener('visibilitychange',visible);
+    return()=>{clearInterval(timer);requestRef.current?.abort();document.removeEventListener('visibilitychange',visible)};
+  },[refresh,favoriteDates]);
+
+  const currentGame=selected?([...extraGames,...(feed?.games||[])].find(g=>gameKey(g)===gameKey(selected))||saved.find(g=>gameKey(g)===gameKey(selected))||selected):null;
+  const eventId=currentGame?.eventId;
+  useEffect(()=>{
+    setDetail(null); setDetailError(''); setEventFilter('all');
+    if(!eventId)return;
+    const controller=new AbortController();
+    async function load() {
+      try {
+        const response=await fetch('/api/game?id='+eventId,{signal:controller.signal});
+        const result=await response.json() as Detail;
+        if(!response.ok)throw new Error(result.error||'Matchhändelser kunde inte hämtas.');
+        if(!controller.signal.aborted){setDetail(result);setDetailError('')}
+      } catch(e) {if(!controller.signal.aborted)setDetailError((e as Error).message)}
+    }
+    load();
+    const timer=setInterval(()=>{if(document.visibilityState==='visible')load()},30000);
+    const visible=()=>{if(document.visibilityState==='visible')load()};
+    document.addEventListener('visibilitychange',visible);
+    return()=>{controller.abort();clearInterval(timer);document.removeEventListener('visibilitychange',visible)};
+  },[eventId]);
+
+  const modalOpen=!!currentGame||!!sheet;
+  useEffect(()=>{
+    if(!modalOpen)return;
+    const previousFocus=document.activeElement as HTMLElement|null;
+    const oldOverflow=document.body.style.overflow;
+    document.body.style.overflow='hidden';
+    const panel=modalRef.current;
+    panel?.querySelector<HTMLElement>('button')?.focus();
+    const key=(event:KeyboardEvent)=>{
+      if(event.key==='Escape'){setSelected(null);setSheet(null)}
+      if(event.key!=='Tab'||!panel)return;
+      const elements=[...panel.querySelectorAll<HTMLElement>('button:not(:disabled),a[href],input,select')].filter(el=>el.getClientRects().length>0);
+      const first=elements[0],last=elements.at(-1);
+      if(event.shiftKey&&document.activeElement===first){event.preventDefault();last?.focus()}
+      else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first?.focus()}
+    };
+    document.addEventListener('keydown',key);
+    return()=>{document.body.style.overflow=oldOverflow;document.removeEventListener('keydown',key);previousFocus?.focus()};
+  },[modalOpen]);
+
+  function toggleTeam(team:string){setTeams(old=>old.includes(team)?old.filter(t=>t!==team):[...old,team])}
+  function toggleGame(game:Game){setSaved(old=>toggleSavedGame(old,game))}
+  function navigate(next:Page){setPage(next);setQuery('');setSearchOpen(false);window.scrollTo({top:0,behavior:'smooth'})}
+  function closeModal(){setSelected(null);setSheet(null)}
+  const isSaved=(game:Game)=>saved.some(item=>gameKey(item)===gameKey(game));
+  const followed=(game:Game)=>teams.includes(game.home)||teams.includes(game.away);
+  const freshKeys=new Set(extraGames.map(gameKey));
+  const visibleGames=(page==='favorites'?saved:feed?.games||[])
+    .filter(game=>(page!=='live'||game.status==='live')&&(page==='favorites'||region==='Alla'||game.region===region)&&(!onlyFollowed||page!=='matches'||followed(game))&&(!query||(game.home+' '+game.away).toLowerCase().includes(query.toLowerCase())))
+    .sort((a,b)=>Number(b.status==='live')-Number(a.status==='live')||a.date.localeCompare(b.date)||a.time.localeCompare(b.time));
+  const sections=[...new Set(visibleGames.map(g=>g.date+'|'+g.group))];
+  const liveCount=(feed?.games||[]).filter(game=>game.status==='live').length;
+  const nextDate=feed?.dates.find(d=>d>activeDate);
+  const previousDate=feed?.dates.filter(d=>d<activeDate).at(-1);
+  const allTeams=[...new Set([...(feed?.teams||[]),...teams])].sort((a,b)=>Number(teams.includes(b))-Number(teams.includes(a))||a.localeCompare(b,'sv'));
+  const title=page==='matches'?'Matcher':page==='live'?'Live':'Favoriter';
+  const subtitle=page==='favorites'?`${saved.length} ${saved.length===1?'match':'matcher'} · ${teams.length} lag`:dateLabel(activeDate,{weekday:'long',day:'numeric',month:'long'});
+
+  return <>
+    <div className="phone-app">
+      <header className="app-header">
+        <div className="top-line"><a href="/" className="wordmark" aria-label="TVÅAN startsida"><span className="puck-mark">II</span>TVÅAN<span className="league-name">HOCKEYTVÅAN</span></a><button className="icon-button subtle" aria-label="Om appen" onClick={()=>setSheet('about')}><Info size={20}/></button></div>
+        <div className="title-line"><div><h1>{title}{page==='live'&&<span className="title-live-dot"/>}</h1><p className="subtitle">{subtitle}</p></div><div className="header-actions">{page!=='favorites'&&<button aria-label={searchOpen?'Stäng sökning':'Sök matcher'} className="icon-button" onClick={()=>{setSearchOpen(!searchOpen);setQuery('')}}>{searchOpen?<X size={21}/>:<Search size={21}/>}</button>}<button className="icon-button" disabled={loading} aria-label="Uppdatera matcher" onClick={refresh}><RefreshCw size={20} className={loading?'spin':''}/></button></div></div>
+        {searchOpen&&<label className="search-field"><Search size={18}/><input autoFocus type="search" aria-label="Sök lag eller match" placeholder="Sök lag eller match" value={query} onChange={e=>setQuery(e.target.value)}/></label>}
+        {page==='matches'&&<div className="date-navigation"><button className="icon-button" aria-label="Föregående dag" onClick={()=>setDate(shift(date,-1))}><ChevronLeft size={21}/></button><div className="date-days">{[-2,-1,0,1,2].map(n=>{const d=shift(date,n);return <button key={d} aria-pressed={n===0} className={n===0?'selected':''} onClick={()=>setDate(d)}><span>{d===today()?'Idag':dateLabel(d,{weekday:'short'}).replace('.','')}</span><b>{dateLabel(d,{day:'numeric'})}</b><i className={feed?.dates.includes(d)?'has-games':''}/></button>})}</div><label className="calendar-button" title="Välj datum"><CalendarDays size={20}/><input type="date" aria-label="Välj datum" value={date} onChange={e=>e.target.value&&setDate(e.target.value)}/></label></div>}
+        {page==='favorites'&&<div className="segmented" aria-label="Favorittyp">{[['games','Matcher'],['teams','Lag']].map(([value,name])=><button key={value} aria-pressed={favoriteTab===value} className={favoriteTab===value?'selected':''} onClick={()=>setFavoriteTab(value as 'games'|'teams')}>{name}</button>)}</div>}
+      </header>
+
+      <main>
+        <div className="list-toolbar">
+          <span>{page==='live'?`${liveCount} pågående matcher`:page==='favorites'?(favoriteTab==='games'?'SPARADE MATCHER':'MINA LAG'):region==='Alla'?'ALLA REGIONER':'REGION '+region.toUpperCase()}</span>
+          {page==='matches'?<div className="toolbar-actions">{date!==today()&&<button onClick={()=>setDate(today())}>Idag</button>}<button className={onlyFollowed?'filter-active':''} aria-label="Filtrera matcher" onClick={()=>setSheet('filters')}><SlidersHorizontal size={16}/>{onlyFollowed?'Mina lag':'Filter'}<ChevronDown size={12}/></button></div>:page==='favorites'&&favoriteTab==='teams'?<button className="add-team" onClick={()=>{setTeamSearch('');setSheet('teams')}}><Plus size={17}/>Lägg till</button>:null}
+        </div>
+        {error&&<div className="notice error" role="alert"><Info size={18}/><div><b>Kunde inte uppdatera</b><p>{feed||page==='favorites'?'Senast sparade uppgifter visas. ':''}{error}</p></div><button aria-label="Försök igen" onClick={refresh}><RefreshCw size={18}/></button></div>}
+        {!error&&!!feed?.failed.length&&<div className="notice"><Info size={17}/><p>Rapporteringen är tillfälligt otillgänglig i {feed.failed.join(', ')}.</p></div>}
+        {page==='favorites'&&favoriteTab==='games'&&extraFailed&&!error&&<div className="notice"><Info size={17}/><p>Vissa sparade matcher kunde inte uppdateras. Senast sparade uppgifter visas.</p></div>}
+
+        {page==='favorites'&&favoriteTab==='teams'?
+          teams.length?<div className="group-card team-list">{[...teams].sort((a,b)=>a.localeCompare(b,'sv')).map(team=><div className="team-row" key={team}><button className="team-open" aria-label={'Visa matcher för '+team} onClick={()=>{navigate('matches');setOnlyFollowed(false);setQuery(team);setSearchOpen(true)}}><Crest name={team}/><span>{team}</span><ChevronRight size={16}/></button><button className="star-button saved" aria-label={'Sluta följa '+team} aria-pressed onClick={()=>toggleTeam(team)}><Star size={21} fill="currentColor"/></button></div>)}</div>:
+          <div className="empty-state"><div className="empty-symbol"><Users size={30}/></div><h2>Vilket är ditt lag?</h2><p>Följ dina lag och hitta deras matcher snabbt.</p><button className="primary" onClick={()=>{setTeamSearch('');setSheet('teams')}}><Plus size={17}/>Lägg till lag</button></div>:
+          loading&&!feed&&page!=='favorites'?<div className="loading-state" role="status"><RefreshCw size={24} className="spin"/><p>Hämtar matcher…</p></div>:
+          visibleGames.length?sections.map(section=>{
+            const [sectionDate,group]=section.split('|');
+            const matches=visibleGames.filter(game=>game.date===sectionDate&&game.group===group);
+            return <section className="match-section" key={section}>
+              <h2 className="group-title"><span className="sweden-flag"/><span>{group}</span>{page==='favorites'&&<time>{dateLabel(sectionDate,{day:'numeric',month:'short'})}</time>}</h2>
+              <div className="group-card">{matches.map(game=>{
+                const stale=page==='favorites'&&!freshKeys.has(gameKey(game));
+                return <div className="match-row" key={gameKey(game)}>
+                  <button className="match-open" aria-label={`${game.home} mot ${game.away}, ${game.homeScore??'–'}–${game.awayScore??'–'}, ${stale?'senast sparat':statusLabel(game)}`} onClick={()=>setSelected(game)}>
+                    <div className={'match-status'+(game.status==='live'&&!stale?' is-live':'')}>{game.status==='live'&&!stale&&<span className="live-dot"/>}<b>{stale&&game.status==='live'?'Sparad':statusLabel(game)}</b>{game.status==='live'&&!stale?<small>Pågår</small>:game.status!=='scheduled'?<small>{game.time}</small>:null}</div>
+                    <div className="match-teams">{[[game.home,game.homeScore],[game.away,game.awayScore]].map(([name,score])=><div className="team-score" key={name as string}><Crest name={name as string}/><span className={teams.includes(name as string)?'followed-team':''}>{name as string}</span><b className={game.status==='live'&&!stale?'live-score':''}>{score??'–'}</b></div>)}</div>
+                  </button>
+                  <button className={'star-button'+(isSaved(game)?' saved':'')} aria-label={(isSaved(game)?'Ta bort favoritmatch ':'Spara match ')+game.home+' mot '+game.away} aria-pressed={isSaved(game)} onClick={()=>toggleGame(game)}><Star size={21} fill={isSaved(game)?'currentColor':'none'}/></button>
+                </div>;
+              })}</div>
+            </section>;
+          }):!error&&<div className="empty-state"><div className={'empty-symbol'+(page==='live'?' red':'')}>{page==='live'?<Radio size={30}/>:page==='favorites'?<Star size={30}/>:<CalendarDays size={30}/>}</div><h2>{page==='live'?'Lugnt på isen just nu':page==='favorites'?'Dina matcher, ett tryck bort':query?'Inga matcher hittades':onlyFollowed?'Dina lag spelar inte idag':'Ingen match den här dagen'}</h2><p>{page==='live'?'Här dyker matcherna upp när pucken släpps.':page==='favorites'?'Tryck på stjärnan vid en match för att spara den.':query?'Prova ett annat lag eller välj en annan dag.':'Välj en annan dag för nästa nedsläpp.'}</p><div className="empty-actions">{page==='favorites'||page==='live'?<button className="primary" onClick={()=>navigate('matches')}>Visa matcher<ChevronRight size={16}/></button>:nextDate?<button className="primary" onClick={()=>setDate(nextDate)}>Nästa matchdag · {dateLabel(nextDate,{day:'numeric',month:'short'})}<ChevronRight size={16}/></button>:null}{page==='matches'&&previousDate&&<button className="text-button" onClick={()=>setDate(previousDate)}>Senaste resultaten</button>}</div></div>}
+
+        <div className="sync-status" role="status"><span className={'sync-dot'+(error?' offline':'')}/>{loading?'Uppdaterar…':error?'Uppdatering misslyckades':feed?'Uppdaterat '+new Date(feed.checkedAt).toLocaleTimeString('sv-SE',{hour:'2-digit',minute:'2-digit',timeZone:'Europe/Stockholm'}):'Väntar på data'}<span className="sync-divider">·</span>30 s</div>
+      </main>
+
+      <nav className="tab-bar" aria-label="Huvudnavigation">{([{id:'matches',name:'Matcher',icon:CalendarDays},{id:'live',name:'Live',icon:Radio},{id:'favorites',name:'Favoriter',icon:Star}] as const).map(({id,name,icon:Icon})=><button key={id} aria-current={page===id?'page':undefined} className={page===id?'active':''} onClick={()=>navigate(id)}><span className="tab-icon"><Icon size={24} strokeWidth={page===id?2.2:1.7} fill={id==='favorites'&&page===id?'currentColor':'none'}/>{id==='live'&&activeDate===today()&&liveCount>0&&<i/>}</span><span>{name}</span></button>)}</nav>
+    </div>
+
+    {modalOpen&&<div className="overlay" onClick={closeModal}><section ref={modalRef} className={'sheet'+(currentGame?' match-sheet':'')} role="dialog" aria-modal="true" aria-label={currentGame?'Matchdetaljer':sheet==='teams'?'Välj favoritlag':sheet==='filters'?'Filtrera matcher':'Om TVÅAN'} onClick={e=>e.stopPropagation()}>
+      <div className="sheet-handle"/>
+      <div className="sheet-header"><h2>{currentGame?'Hockeytvåan · '+currentGame.group:sheet==='teams'?'Lägg till lag':sheet==='filters'?'Visa matcher':'TVÅAN'}</h2><button className="icon-button close-button" aria-label="Stäng" onClick={closeModal}><X size={19}/></button></div>
+      {currentGame?<>
+        <div className="detail-date">{dateLabel(currentGame.date,{weekday:'short',day:'numeric',month:'long'})} · {currentGame.time}</div>
+        <div className="detail-match"><div className="detail-team"><Crest name={currentGame.home} large/><h3>{currentGame.home}</h3><button aria-label={(teams.includes(currentGame.home)?'Sluta följa ':'Följ ')+currentGame.home} aria-pressed={teams.includes(currentGame.home)} className={'team-follow'+(teams.includes(currentGame.home)?' following':'')} onClick={()=>toggleTeam(currentGame.home)}>{teams.includes(currentGame.home)?<Check size={14}/>:<Plus size={14}/>} {teams.includes(currentGame.home)?'Följer':'Följ lag'}</button></div><div className="detail-score"><span className={(detail?.status||currentGame.status)==='live'?'is-live':''}>{detail?.label||statusLabel(currentGame)}</span><b>{detail?.homeScore??currentGame.homeScore??'–'}<i>–</i>{detail?.awayScore??currentGame.awayScore??'–'}</b></div><div className="detail-team"><Crest name={currentGame.away} large/><h3>{currentGame.away}</h3><button aria-label={(teams.includes(currentGame.away)?'Sluta följa ':'Följ ')+currentGame.away} aria-pressed={teams.includes(currentGame.away)} className={'team-follow'+(teams.includes(currentGame.away)?' following':'')} onClick={()=>toggleTeam(currentGame.away)}>{teams.includes(currentGame.away)?<Check size={14}/>:<Plus size={14}/>} {teams.includes(currentGame.away)?'Följer':'Följ lag'}</button></div></div>
+        <button className={'save-match'+(isSaved(currentGame)?' saved':'')} aria-pressed={isSaved(currentGame)} onClick={()=>toggleGame(currentGame)}><Star size={17} fill={isSaved(currentGame)?'currentColor':'none'}/>{isSaved(currentGame)?'Sparad match':'Spara match'}</button>
+        {(currentGame.periods||detail?.shots?.length===2)&&<div className="stats-card">{currentGame.periods&&<div><span>Perioder</span><b>{currentGame.periods.replace(/[()]/g,'')}</b></div>}{detail?.shots?.length===2&&<div><span>Skott på mål</span><b>{detail.shots[0]} – {detail.shots[1]}</b></div>}</div>}
+        <div className="event-header"><h3>Händelser</h3><div className="event-switch">{[['all','Alla'],['goals','Mål']].map(([value,name])=><button className={eventFilter===value?'selected':''} aria-pressed={eventFilter===value} key={value} onClick={()=>setEventFilter(value as 'all'|'goals')}>{name}</button>)}</div></div>
+        {detailError&&<div className="notice error" role="alert"><Info size={17}/><p>{detailError}{detail?' Senast hämtade händelser visas.':''}</p></div>}
+        <div className="events">{!eventId?<p className="quiet-text">Händelser visas när matchen börjar rapporteras.</p>:!detail&&!detailError?<div className="detail-loading"><RefreshCw size={18} className="spin"/>Hämtar händelser…</div>:detail?.events?.filter(e=>eventFilter==='all'||/\d+\s*-\s*\d+/.test(e.type)).length?detail.events.filter(e=>eventFilter==='all'||/\d+\s*-\s*\d+/.test(e.type)).map((event,index)=><div className="event" key={index}><time>{event.time}</time><span className={'event-type'+(/\d+\s*-\s*\d+/.test(event.type)?' goal':'')}>{event.type}</span><div><b>{event.team}</b><p>{event.detail}</p></div></div>):!detailError&&<p className="quiet-text">{eventFilter==='goals'?'Inga mål har rapporterats.':'Inga händelser har rapporterats ännu.'}</p>}</div>
+        <div className="match-footnote">{currentGame.venue&&<p>{currentGame.venue}</p>}{detail?.sourceUpdated&&<p>Rapporterat {detail.sourceUpdated}</p>}<a href={eventId?'https://stats.swehockey.se/Game/Events/'+eventId:'https://stats.swehockey.se/ScheduleAndResults/Schedule/'+currentGame.groupId} target="_blank" rel="noreferrer">Öppna hos Swehockey <ArrowUpRight size={13}/></a></div>
+      </>:sheet==='teams'?<>
+        <label className="search-field sheet-search"><Search size={18}/><input autoFocus type="search" aria-label="Sök favoritlag" placeholder="Sök ditt lag" value={teamSearch} onChange={e=>setTeamSearch(e.target.value)}/></label>
+        <div className="team-picker">{allTeams.filter(team=>team.toLowerCase().includes(teamSearch.toLowerCase())).map(team=><button key={team} className="pick-team" aria-label={(teams.includes(team)?'Sluta följa ':'Följ ')+team} aria-pressed={teams.includes(team)} onClick={()=>toggleTeam(team)}><Crest name={team}/><span>{team}</span><Star size={21} className={teams.includes(team)?'saved':''} fill={teams.includes(team)?'currentColor':'none'}/></button>)}{allTeams.length===0&&<p className="quiet-text">{loading?'Hämtar lag…':'Laglistan kunde inte hämtas. Stäng och försök uppdatera.'}</p>}{allTeams.length>0&&!allTeams.some(team=>team.toLowerCase().includes(teamSearch.toLowerCase()))&&<p className="quiet-text">Inga lag matchar sökningen.</p>}</div>
+      </>:sheet==='filters'?<div className="filter-options"><h3>Region</h3><div className="filter-list">{['Alla','Syd','Väst','Öst','Norr'].map(item=><button aria-pressed={region===item} key={item} onClick={()=>setRegion(item)}><span>{item==='Alla'?'Hela Sverige':'Region '+item}</span>{region===item&&<Check size={20}/>}</button>)}</div><h3>Lag</h3><button className="toggle-row" role="switch" aria-checked={onlyFollowed} onClick={()=>setOnlyFollowed(!onlyFollowed)}><span>Endast mina lag</span><span className={'toggle'+(onlyFollowed?' on':'')}><i/></span></button><button className="primary done-button" onClick={()=>setSheet(null)}>Visa matcher</button></div>:
+      <div className="about-content"><div className="app-icon">II</div><h3>Hockeytvåan. I fickan.</h3><p>Matcher, liveresultat och dina favoriter. Nio grupper i hela Sverige, säsongen 2026/27.</p><h4>Lägg till på hemskärmen</h4><p>Öppna appen i Safari på din iPhone. Tryck på Dela och välj Lägg till på hemskärmen.</p><h4>Live & favoriter</h4><p>Resultat och händelser hämtas från Swehockey var 30:e sekund när appen är öppen och synlig. Rapporteringen kan vara fördröjd. Lag och matcher sparas på den här enheten. Pushnotiser ingår inte.</p><a className="about-source" href="https://stats.swehockey.se" target="_blank" rel="noreferrer">Statistik från Swehockey <ArrowUpRight size={15}/></a><p className="fine-print">Fristående app med en egen feed från Swehockeys officiella sidor.</p></div>}
+    </section></div>}
+  </>;
+}
 

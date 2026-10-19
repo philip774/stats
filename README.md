@@ -1,6 +1,6 @@
 # TVÅAN — Hockeytvåan matchcenter
 
-A mobile-friendly Swedish scoreboard covering nine Hockeytvåan groups in 2026/27. Includes automatic refresh, fixtures/results, regional filters, favorite teams, and match events with shots, goals and penalties when reported.
+An iPhone-style Swedish match app covering nine Hockeytvåan groups in 2026/27. Three tabs keep the interface focused: Matcher, Live and Favoriter. Includes automatic refresh, date navigation, region filters, followed-team filtering, individual saved games, and match events with shots, goals and penalties when reported.
 
 ## Deploy to Vercel
 
@@ -37,6 +37,6 @@ API endpoints:
 - `/api/games?date=YYYY-MM-DD`
 - `/api/game?id=GAME_ID`
 
-All match dates use Europe/Stockholm. Favorites are saved on the device. Add to Home Screen is supported; push notifications are not included. Update the group IDs in `lib/hockey.mjs` for future seasons. Current IDs were verified on 19 October 2026.
+All match dates use Europe/Stockholm. Favorite teams and individual saved games are kept on the device. Saved games refresh across their match dates and remain saved when the upstream game ID changes as reporting starts. Existing team favorites are preserved. On iPhone, open in Safari and choose Share → Add to Home Screen for the standalone app layout and icon. Safe-area insets are supported. Push notifications are not included. Update the group IDs in `lib/hockey.mjs` for future seasons. Current IDs were verified on 19 October 2026.
 
 The original Sites checkout and temporary research/build artifacts are retained locally but excluded from this GitHub repository. This version uses standard Next.js for Vercel and has no Sites/Cloudflare dependency.
