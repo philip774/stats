@@ -1,0 +1,17 @@
+node_modules/
+.next/
+out/
+.vercel/
+.env*
+!.env.example
+*.tsbuildinfo
+next-env.d.ts
+.DS_Store
+npm-debug.log*
+/hockeytvaan/
+/hockeytvaan-package/
+/*-sample.html
+/east-schedule.html
+/live-fragment.html
+/swehockey-js.txt
+/*.tar.gz
