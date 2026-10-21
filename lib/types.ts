@@ -1,0 +1,4 @@
+export type Game={id:string;eventId?:string;date:string;time:string;home:string;away:string;homeScore:number|null;awayScore:number|null;periods:string;venue:string;groupId:string;group:string;region:string;status:string};
+export type Detail={homeScore:number|null;awayScore:number|null;status:string;label:string;shots:number[];metrics?:{shots:number[]|null;saves:number[]|null;penaltyMinutes:number[]|null;powerPlay:number[]|null};attendance?:string|null;events:{time:string;type:string;team:string;detail:string}[];sourceUpdated:string|null;error?:string};
+export type Standing={rank:number;team:string;played:number;wins:number;losses:number;goalsFor:number;goalsAgainst:number;difference:number;points:number};
+export type League={group:{id:string;name:string;region:string};standings:{total:Standing[];home:Standing[];away:Standing[]}|null;games:Game[];partial:boolean;checkedAt:string;error?:string};

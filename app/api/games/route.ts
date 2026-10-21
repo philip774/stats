@@ -8,6 +8,7 @@ export async function GET(request:Request){
  if(!/^\d{4}-\d{2}-\d{2}$/.test(date))return Response.json({error:'Invalid date'},{status:400});
  const results=await Promise.allSettled(GROUPS.map(async group=>parseSchedule(await source('/ScheduleAndResults/Schedule/'+group.id),group)));
  const games=results.flatMap(r=>r.status==='fulfilled'?r.value:[]);
+ const teamGroups=Object.fromEntries(games.flatMap(g=>[[g.home,g.groupId],[g.away,g.groupId]]));
  const liveFailures:string[]=[];
  if(date===today){
  const liveResults=await Promise.allSettled(GROUPS.map(async group=>{
@@ -24,5 +25,5 @@ export async function GET(request:Request){
  await Promise.allSettled(games.filter(g=>g.date===date&&g.date===today&&g.eventId&&g.status==='reported').map(async g=>{const live=parseEvents(await source('/Game/Events/'+g.eventId));g.status=live.status;if(live.homeScore!==null){g.homeScore=live.homeScore;g.awayScore=live.awayScore;}}));
  games.forEach(g=>{if(g.date<today&&g.homeScore!==null)g.status='finished';});
  const failed=[...new Set([...GROUPS.filter((_,i)=>results[i].status==='rejected').map(g=>g.name),...liveFailures])];
- return Response.json({games:games.filter(g=>g.date===date),dates:[...new Set(games.map(g=>g.date))].sort(),teams:[...new Set(games.flatMap(g=>[g.home,g.away]))].sort(),groups:GROUPS,failed,checkedAt:new Date().toISOString(),source:'https://stats.swehockey.se',error:failed.length===GROUPS.length?'Kunde inte hämta matcher från Swehockey. Försök igen.':null},{status:failed.length===GROUPS.length?502:200,headers:{'Cache-Control':'public, max-age=15, s-maxage=25'}});
+ return Response.json({games:games.filter(g=>g.date===date),dates:[...new Set(games.map(g=>g.date))].sort(),teamGroups,teams:[...new Set(games.flatMap(g=>[g.home,g.away]))].sort(),groups:GROUPS,failed,checkedAt:new Date().toISOString(),source:'https://stats.swehockey.se',error:failed.length===GROUPS.length?'Kunde inte hämta matcher från Swehockey. Försök igen.':null},{status:failed.length===GROUPS.length?502:200,headers:{'Cache-Control':'public, max-age=15, s-maxage=25'}});
 }

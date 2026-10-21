@@ -1,0 +1,50 @@
+'use client';
+import {useEffect,useState} from 'react';
+import {ChevronRight,RefreshCw,Star,Trophy} from 'lucide-react';
+import {GROUPS} from '../lib/hockey.mjs';
+import {headToHead,teamSummary} from '../lib/statistics.mjs';
+import type {Detail,Game,League} from '../lib/types';
+
+function useLeague(group:string,refreshToken=0){
+  const [data,setData]=useState<League|null>(null),[error,setError]=useState(''),[loading,setLoading]=useState(true),[retry,setRetry]=useState(0);
+  useEffect(()=>{
+    const controller=new AbortController();setData(null);setError('');setLoading(true);
+    const load=async()=>{try{const response=await fetch('/api/league?group='+group,{signal:controller.signal});const result=await response.json() as League;if(!response.ok)throw new Error(result.error||'Kunde inte hämta statistik.');if(!controller.signal.aborted){setData(result);setError('')}}catch(e){if(!controller.signal.aborted)setError((e as Error).message)}finally{if(!controller.signal.aborted)setLoading(false)}};
+    load();const timer=setInterval(()=>{if(document.visibilityState==='visible')load()},60000);const visible=()=>{if(document.visibilityState==='visible')load()};document.addEventListener('visibilitychange',visible);
+    return()=>{controller.abort();clearInterval(timer);document.removeEventListener('visibilitychange',visible)};
+  },[group,retry,refreshToken]);
+  return {data,error,loading,reload:()=>setRetry(n=>n+1)};
+}
+const dateLabel=(date:string)=>new Date(date+'T12:00:00Z').toLocaleDateString('sv-SE',{day:'numeric',month:'short'});
+function LoadStatus({loading,error,reload}:{loading:boolean;error:string;reload:()=>void}){return loading?<div className="detail-loading" role="status"><RefreshCw size={20} className="spin"/>Hämtar statistik…</div>:error?<div className="notice error" role="alert"><p>{error}</p><button onClick={reload}>Försök igen</button></div>:null}
+function Form({games,team,before}:{games:Game[];team:string;before?:string}){const summary=teamSummary(games,team,before);return <div className="form-dots" aria-label={'Form för '+team}>{summary.form.length?summary.form.map(({game,result}:{game:Game;result:string})=><span key={game.id} className={'form-dot '+result} title={`${dateLabel(game.date)}: ${game.home} ${game.homeScore}–${game.awayScore} ${game.away}`} aria-label={result==='W'?'Vinst':result==='L'?'Förlust':'Oavgjort'}>{result==='W'?'V':result==='L'?'F':'O'}</span>):<small>Inga avslutade matcher</small>}</div>}
+function Fixture({game,onGame}:{game:Game;onGame:(game:Game)=>void}){return <button className="profile-fixture" onClick={()=>onGame(game)}><time>{dateLabel(game.date)}<small>{game.time}</small></time><span><b>{game.home}</b><b>{game.away}</b></span><strong>{game.homeScore??'–'}<br/>{game.awayScore??'–'}</strong><ChevronRight size={15}/></button>}
+
+export function LeagueTables({teams,onTeam,refreshToken}:{teams:string[];onTeam:(name:string,group:string)=>void;refreshToken:number}){
+  const [group,setGroup]=useState(GROUPS[0].id),[scope,setScope]=useState<'total'|'home'|'away'>('total');
+  const {data,error,loading,reload}=useLeague(group,refreshToken);
+  const rows=data?.standings?.[scope]||[];
+  return <div className="league-view"><label className="league-select"><Trophy size={18}/><select aria-label="Välj serie" value={group} onChange={e=>setGroup(e.target.value)}>{GROUPS.map(g=><option value={g.id} key={g.id}>Hockeytvåan {g.name}</option>)}</select></label><div className="segmented table-scope">{[['total','Totalt'],['home','Hemma'],['away','Borta']].map(([id,label])=><button key={id} className={scope===id?'selected':''} aria-pressed={scope===id} onClick={()=>setScope(id as typeof scope)}>{label}</button>)}</div><LoadStatus loading={loading} error={error} reload={reload}/>{data?.partial&&<div className="notice">Delar av statistiken är tillfälligt otillgängliga.</div>}{rows.length>0?<><div className="group-card table-card"><table className="league-table"><caption className="sr-only">Hockeytvåan {data?.group.name}, {scope==='home'?'hemmatabell':scope==='away'?'bortatabell':'total tabell'}</caption><thead><tr><th scope="col">#</th><th scope="col">Lag</th><th scope="col" title="Spelade matcher">S</th><th scope="col" title="Målskillnad">+/−</th><th scope="col" title="Poäng">P</th></tr></thead><tbody>{rows.map(row=><tr className={teams.includes(row.team)?'followed-row':''} key={row.team}><td>{row.rank}</td><th scope="row"><button onClick={()=>onTeam(row.team,group)}>{teams.includes(row.team)&&<Star size={10} fill="currentColor"/>}{row.team}</button></th><td>{row.played}</td><td>{row.difference>0?'+':''}{row.difference}</td><td><b>{row.points}</b></td></tr>)}</tbody></table></div><p className="table-key">S = spelade · +/− = målskillnad · P = poäng</p><p className="table-key">Tryck på ett lag för form, statistik och spelschema.</p></>:!loading&&!error&&<p className="quiet-text">Ingen tabell tillgänglig för det här valet.</p>}{data&&<p className="table-key source-note">Officiell tabell · hämtad {new Date(data.checkedAt).toLocaleTimeString('sv-SE',{hour:'2-digit',minute:'2-digit',timeZone:'Europe/Stockholm'})} · uppdateras varje minut</p>}</div>;
+}
+
+export function TeamProfile({team,group,followed,onFollow,onGame}:{team:string;group:string;followed:boolean;onFollow:()=>void;onGame:(game:Game)=>void}){
+  const {data,error,loading,reload}=useLeague(group);
+  const row=data?.standings?.total.find(row=>row.team===team);
+  const games=(data?.games||[]).filter(g=>g.home===team||g.away===team);
+  const today=new Intl.DateTimeFormat('sv-SE',{timeZone:'Europe/Stockholm'}).format(new Date());
+  const upcoming=games.filter(g=>g.homeScore===null&&g.date>=today).sort((a,b)=>a.date.localeCompare(b.date)||a.time.localeCompare(b.time)).slice(0,5);
+  const recent=games.filter(g=>g.status==='finished').sort((a,b)=>b.date.localeCompare(a.date)||b.time.localeCompare(a.time)).slice(0,5);
+  return <div className="team-profile"><div className="profile-identity"><div className="profile-monogram">{team.split(' ').slice(0,2).map(s=>s[0]).join('')}</div><h3>{team}</h3><p>Hockeytvåan {data?.group.name||GROUPS.find(g=>g.id===group)?.name}</p><button className={'team-follow'+(followed?' following':'')} onClick={onFollow} aria-pressed={followed}><Star size={14} fill={followed?'currentColor':'none'}/>{followed?'Följer laget':'Följ laget'}</button></div><LoadStatus loading={loading} error={error} reload={reload}/>{data?.partial&&<div className="notice">Delar av lagets statistik är tillfälligt otillgängliga.</div>}{row&&<><div className="profile-numbers"><div><b>#{row.rank}</b><span>Placering</span></div><div><b>{row.points}</b><span>Poäng</span></div><div><b>{row.played}</b><span>Matcher</span></div></div><div className="stats-card profile-stats"><div><span>Vinster / förluster inkl. förlängning</span><b>{row.wins} / {row.losses}</b></div><div><span>Gjorda / insläppta mål</span><b>{row.goalsFor} / {row.goalsAgainst}</b></div><div><span>Målskillnad</span><b>{row.difference>0?'+':''}{row.difference}</b></div></div></>}{data&&<><h4 className="profile-heading">Form · senaste 5</h4><Form games={games} team={team}/><p className="table-key">Senaste matchen först. Inkluderar förlängning och straffar.</p><h4 className="profile-heading">Kommande matcher</h4><div className="group-card">{upcoming.length?upcoming.map(game=><Fixture key={game.id} game={game} onGame={onGame}/>):<p className="quiet-text">Inga kommande matcher i seriens spelschema.</p>}</div><h4 className="profile-heading">Senaste resultaten</h4><div className="group-card">{recent.length?recent.map(game=><Fixture key={game.id} game={game} onGame={onGame}/>):<p className="quiet-text">Inga avslutade matcher ännu.</p>}</div></>}</div>;
+}
+
+export function MatchStatistics({detail,game}:{detail:Detail|null;game:Game}){
+  const metrics=detail?.metrics;
+  const rows=[{key:'shots',label:'Skott på mål',suffix:''},{key:'saves',label:'Räddningar',suffix:''},{key:'penaltyMinutes',label:'Utvisningsminuter',suffix:''},{key:'powerPlay',label:'Powerplay',suffix:' %'}] as const;
+  return <div className="match-statistics"><div className="stat-team-labels"><span>{game.home}</span><span>{game.away}</span></div>{rows.map(({key,label,suffix})=>{const values=metrics?.[key]||(key==='shots'&&detail?.shots?.length===2?detail.shots:null);if(!values)return null;const sum=values[0]+values[1];return <div className="comparison-stat" key={key}><div><b>{values[0].toLocaleString('sv-SE')}{suffix}</b><span>{label}</span><b>{values[1].toLocaleString('sv-SE')}{suffix}</b></div><div className="stat-bars"><i style={{width:(sum?values[0]/sum*100:50)+'%'}}/><i style={{width:(sum?values[1]/sum*100:50)+'%'}}/></div></div>})}{!rows.some(row=>metrics?.[row.key])&&!detail?.shots?.length&&<p className="quiet-text">Statistik visas när arrangören rapporterar den.</p>}{detail?.attendance!==null&&detail?.attendance!==undefined&&<p className="table-key">Publik: {detail.attendance}</p>}</div>;
+}
+
+export function MatchInsights({game,onGame}:{game:Game;onGame:(game:Game)=>void}){
+  const {data,error,loading,reload}=useLeague(game.groupId);
+  const meetings=headToHead(data?.games||[],game.home,game.away,game.date) as Game[];
+  return <div className="match-insights"><LoadStatus loading={loading} error={error} reload={reload}/>{data&&<>{data.partial&&<div className="notice">Delar av seriehistoriken kunde inte hämtas.</div>}<h4 className="profile-heading">Form före matchen</h4><div className="form-comparison"><div><b>{game.home}</b><Form games={data.games} team={game.home} before={game.date}/></div><div><b>{game.away}</b><Form games={data.games} team={game.away} before={game.date}/></div></div><p className="table-key">Senaste 5 avslutade matcher före matchdagen, senaste först.</p><h4 className="profile-heading">Tidigare möten · denna serie</h4><div className="group-card">{meetings.length?meetings.map(g=><Fixture key={g.id} game={g} onGame={onGame}/>):<p className="quiet-text">Inga tidigare möten i seriens tillgängliga spelschema.</p>}</div></>}</div>;
+}
