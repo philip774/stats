@@ -8,6 +8,6 @@ export type PlayerFeed={group:League['group'];players:Player[];partial:boolean;c
 
 export type TeamStat={team:string;[key:string]:string|number|null|undefined};
 export type TeamStatFeed={teams:TeamStat[];sources:{name:string;url:string;sourceUpdated:string|null}[];partial:boolean;checkedAt:string;error?:string};
-export type SeasonRecord={season:string;competition:string;stage:string;team:string;played:number|null;goals:number|null;assists:number|null;points:number|null;plusMinus:number|null;penaltyMinutes:number|null;savePercentage:number|null;gaa:number|null;goalsAgainst:number|null;saves:number|null;shutouts:number|null};
+export type SeasonRecord={season:string;competition:string;competitionId?:string;stage:string;stageCode?:string;team:string;teamId?:string;played:number|null;goals:number|null;assists:number|null;points:number|null;plusMinus:number|null;penaltyMinutes:number|null;savePercentage:number|null;gaa:number|null;goalsAgainst:number|null;saves:number|null;shutouts:number|null};
 export type PlayerGame={date:string;competition:string;home:string;away:string;goals:number|null;assists:number|null;points:number|null;plusMinus:number|null;penaltyMinutes:number|null;shots:number|null;hits:number|null;iceTime:string|null;played:number|null;savePercentage:number|null;gaa:number|null;saves:number|null;goalsAgainst:number|null;shotsAgainst:number|null};
 export type PlayerExtra={player:Player;photo:string|null;sourceUrl:string|null;history:SeasonRecord[];games:PlayerGame[];available:boolean;partial?:boolean;checkedAt:string;error?:string};
