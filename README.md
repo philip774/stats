@@ -33,6 +33,7 @@ Old-season women's regional competitions are intentionally excluded. This is sen
 - Match shots, saves, penalty minutes, powerplay and attendance where reported, including deciding shootout goals in the event feed. Existing team and game favorites remain compatible.
 - Team leaderboards and detailed team profiles: powerplay/penalty killing, shots, save/shooting percentage, goals per 60 minutes, penalties, faceoffs and attendance. Per-60-minute values are labeled explicitly and are not confused with per-game figures. Source timestamps and links are available.
 - iPhone home-screen installation, safe-area layout and app icons.
+- A Prognos tab for games in every cataloged competition: estimated regulation win/draw/loss probabilities, next goal before 60:00 (including no further goal), expected remaining goals and a goal within the next five playing minutes. Live estimates follow confirmed score/clock updates every 30 seconds; missing, stale or unsupported clocks suppress live figures.
 
 ## Deploy to Vercel
 
@@ -72,6 +73,7 @@ API endpoints:
 - `/api/players?group=GROUP_ID`
 - `/api/player?group=GROUP_ID&name=SOURCE_NAME&team=TEAM_NAME`
 - `/api/team-stats?group=GROUP_ID`
+- `/api/prediction?group=GROUP_ID&date=YYYY-MM-DD&home=HOME_TEAM&away=AWAY_TEAM`
 
 League IDs: `shl`, `allsvenskan`, `hockeyettan`, `hockeytvaan`, `hockeytrean`, `hockeyfyran`, `sdhl`, `ndhl`, `damtvaan`. Omitting `league` preserves the original Hockeytvåan feed. Group IDs are whitelisted in `lib/hockey.mjs`.
 
@@ -96,3 +98,17 @@ Career sums apply only to the displayed records. Regular season, playoffs and un
 Club history lists clubs by season; it does not infer confirmed transfers, loans, dates or intra-season movement order. Broad worldwide careers and confirmed transfer records require an additional provider. The [Elite Prospects API](https://docs.api.eliteprospects.com/) documents career statistics and transfers; its [coverage/history options](https://developer.eliteprospects.com/pricing) require a suitable account, API access and licensed coverage. No Elite Prospects API integration or credentials are included in this repository. Even a wider provider cannot establish records that were never recorded.
 
 The original Sites checkout and temporary research/build artifacts are retained locally but excluded from this GitHub repository. This version uses standard Next.js for Vercel and has no Sites/Cloudflare dependency.
+
+### Match predictions
+
+`poisson-v1` is the app's own simple statistical model, not an official probability feed. It estimates home/away scoring rates from earlier completed games in the same group, blending team attack/defence with the group mean using eight pseudo-games. Home advantage is estimated from group results and shrunk toward a neutral split. Rates are bounded to 0.05–12 goals per 60-minute game. At least four previous group games and one for each club are required; small team samples are flagged in the interface.
+
+Only dates before the target matchday are used, so current results and future games cannot leak into the pregame estimate. The first three reported period scores exclude extra-time and shootout goals. When complete period splits are absent, unmarked final scores are an approximate fallback; explicitly marked OT/shootout results without splits are excluded. The fallback count is disclosed. A current source schedule is checked to establish the requested match identity.
+
+Independent Poisson distributions over the remaining playing time give regulation home/draw/away probabilities. The finite-horizon next-goal calculation includes no further goal, rather than making the two teams' next-goal chances misleadingly sum to 100%. No synthetic running clock is used: the match scoreboard must publish a supported period/time and a source timestamp no older than five minutes. Timezones use Europe/Stockholm, including DST. Failed detail fetches and mismatched identities also suppress live numbers. The UI checks freshness every 15 seconds and uses the existing 30-second match feed; a five-minute freshness gate is not a claim of instant reporting.
+
+All probabilities apply to **regulation**, not the eventual winner after OT/shootouts. The model has no manpower, empty-net, shot-location, injury or lineup inputs, and expected goal totals are not shot-based xG. Overtime/shootouts are explicitly unsupported. Completed games stop producing live estimates. This model has not been calibrated across the different leagues, so the app does not advertise an accuracy rate.
+
+Run `node scripts/evaluate-predictions.mjs` for a retrospective walk-forward check with currently published schedules. On 22 October 2026, all 36 groups were fetched successfully; 33 had sufficient history for their next game. Hockeytrean Norr C/D/F (21666/21672/21674) did not. Across 672 earlier games with exact regulation outcomes, multiclass Brier score was 0.5847 versus 0.6250 for a symmetric model with the same goal tempo (lower is better). This small early-season retrospective comparison is not live validation or evidence of accuracy in every league. Results can change with source corrections.
+
+The Poisson approach follows standard hockey scoring models; background: [Alan Ryder, Win Probabilities](https://hockeyanalytics.com/Research_files/Win_Probabilities.pdf). Implementation assumptions, shrinkage and exclusions above are this app's choices, not claims made by that paper.
