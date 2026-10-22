@@ -23,13 +23,14 @@ Old-season women's regional competitions are intentionally excluded. This is sen
 ## Features
 
 - Fixtures, results, date navigation, regional and followed-team filters, and live match events.
-- Official total/home/away tables, team profiles, recent form, upcoming games and previous meetings.
-- Player search, team rosters, sortable points/goals/assists lists and goalkeeper rankings. Shots and plus/minus sorting appear where published.
-- Player profiles with age, position, handedness, height, weight, nationality and youth club where available.
+- Official total/home/away tables, an expandable full table with wins/losses and overtime/shootout records, team profiles, recent form, upcoming games and previous meetings. Completed games from today join team form as soon as the source confirms a final score.
+- Player search and position/team/minimum-appearance filters, roster position tabs, additional leaderboards and a side-by-side comparison of two players from the same group. Goalkeeper lists show actual appearances and let users set their own minimum; they are not presented as an officially qualified goalie leaderboard.
+- Player profiles with official portraits, age, position, handedness, height, weight, nationality and youth club where available. Season history and individual game logs include ice time and hits when the official league profile supplies them. Regular season and playoff history stay separate; goalkeeper appearances use GPI, not the team-game GP count.
 - Season goals, assists, points, appearances, penalty minutes, game-winning/powerplay/shorthanded goals. Where published: plus/minus, shots, shooting percentage and faceoff statistics.
 - Goalkeeper appearances, save percentage, GAA, saves, shots against, goals against, shutouts, wins/losses and ice time.
 - The selected league, followed teams, saved games and favorite players are retained on the device. Same-named clubs in different competitions have separate favorites.
-- Match shots, saves, penalty minutes, powerplay and attendance where reported. Existing team and game favorites remain compatible.
+- Match shots, saves, penalty minutes, powerplay and attendance where reported, including deciding shootout goals in the event feed. Existing team and game favorites remain compatible.
+- Team leaderboards and detailed team profiles: powerplay/penalty killing, shots, save/shooting percentage, goals per 60 minutes, penalties, faceoffs and attendance. Per-60-minute values are labeled explicitly and are not confused with per-game figures. Source timestamps and links are available.
 - iPhone home-screen installation, safe-area layout and app icons.
 
 ## Deploy to Vercel
@@ -68,6 +69,8 @@ API endpoints:
 - `/api/game?id=GAME_ID`
 - `/api/league?group=GROUP_ID`
 - `/api/players?group=GROUP_ID`
+- `/api/player?group=GROUP_ID&name=SOURCE_NAME&team=TEAM_NAME`
+- `/api/team-stats?group=GROUP_ID`
 
 League IDs: `shl`, `allsvenskan`, `hockeyettan`, `hockeytvaan`, `hockeytrean`, `hockeyfyran`, `sdhl`, `ndhl`, `damtvaan`. Omitting `league` preserves the original Hockeytvåan feed. Group IDs are whitelisted in `lib/hockey.mjs`.
 
@@ -75,6 +78,12 @@ The visible app refreshes scores/events every 30 seconds, standings/team profile
 
 Form and previous meetings use completed games in the available series schedule. Historical previews exclude games on or after the selected match date. Official rankings and points are read from the source. All match dates use Europe/Stockholm.
 
-Saved games refresh across leagues and dates and remain saved when the upstream game ID changes as reporting starts. On iPhone, open in Safari and choose Share → Add to Home Screen. Push notifications are not included. Update the verified group IDs in `lib/hockey.mjs` for future seasons. Current coverage was verified on 21 October 2026.
+Saved games refresh across leagues and dates and remain saved when the upstream game ID changes as reporting starts. On iPhone, open in Safari and choose Share → Add to Home Screen. Push notifications are not included. Update the verified group IDs in `lib/hockey.mjs` for future seasons. Current coverage and expanded stats were verified on 22 October 2026. Tied ranking rows are retained even when Swehockey leaves the rank cell blank; column headings determine player-stat fields, and missing values never become zeroes.
+
+### Portraits and profile history
+
+Portraits and additional profile records come from public official league sites. SHL and SDHL provide squad/player JSON; players are matched by a unique name and club, with a birthdate check before adding career history. HockeyAllsvenskan currently exposes a partial roster in its public server-rendered page; available portraits can be used, but its unavailable pagination API is not bypassed. Regional competitions do not have a comprehensive public portrait feed. Image and historical coverage therefore varies by player. Missing or failed images show a jersey/avatar placeholder, never a fabricated photo. Portraits are loaded directly from allowlisted official CDNs and linked to their source.
+
+The primary 2026/27 stats remain Swehockey's group-specific figures; a second provider's history never overwrites them. Club names are matched using published aliases and explicit club-name normalization. Stats, standings and biography can update at different times upstream; fetch time is labeled separately from source-update time. This app cannot promise zero reporting delay or data that its sources do not publish.
 
 The original Sites checkout and temporary research/build artifacts are retained locally but excluded from this GitHub repository. This version uses standard Next.js for Vercel and has no Sites/Cloudflare dependency.

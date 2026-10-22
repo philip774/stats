@@ -1,4 +1,4 @@
-import {GROUPS,parseSchedule,source} from '../../../lib/hockey.mjs';
+import {GROUPS,parseSchedule,source,updateGameStatuses} from '../../../lib/hockey.mjs';
 import {parseStandings} from '../../../lib/statistics.mjs';
 export const dynamic='force-dynamic';
 export const runtime='nodejs';
@@ -14,6 +14,6 @@ export async function GET(request:Request) {
   const standings=results[0].status==='fulfilled'?results[0].value:null;
   const games=results[1].status==='fulfilled'?results[1].value:[];
   const today=new Intl.DateTimeFormat('sv-SE',{timeZone:'Europe/Stockholm'}).format(new Date());
-  games.forEach(g=>{if(g.homeScore!==null&&g.date<today)g.status='finished'});
-  return Response.json({group,standings,games,partial:results.some(r=>r.status==='rejected'),checkedAt:new Date().toISOString()},{headers:{'Cache-Control':'public, max-age=30, s-maxage=60'}});
+  const statusPartial=await updateGameStatuses(games,today);
+  return Response.json({group,standings,games,partial:statusPartial||results.some(r=>r.status==='rejected'),checkedAt:new Date().toISOString()},{headers:{'Cache-Control':'public, max-age=30, s-maxage=60'}});
 }
