@@ -1,4 +1,4 @@
-import {groupsForLeague,parseSchedule,parseEvents,source} from '../../../lib/hockey.mjs';
+import {groupsForLeague,parseSchedule,parseEvents,applyGameReport,source} from '../../../lib/hockey.mjs';
 export const dynamic='force-dynamic';
 export const runtime='nodejs';
 export const maxDuration=60;
@@ -20,12 +20,13 @@ export async function GET(request:Request){
  await Promise.all(ids.map(async id=>{
  const live=parseEvents(await source('/Game/Events/'+id));
  const g=games.find(g=>g.groupId===group.id&&g.date===today&&g.home===live.home&&g.away===live.away);
- if(g){g.eventId=id;g.status=live.status;if(live.homeScore!==null){g.homeScore=live.homeScore;g.awayScore=live.awayScore;}}
+ if(g){g.eventId=id;applyGameReport(g,live)}
  }));
  }));
  groups.forEach((g,i)=>{if(liveResults[i].status==='rejected')liveFailures.push(g.name)});
  }
- await Promise.allSettled(games.filter(g=>g.date===date&&g.date===today&&g.eventId&&g.status==='reported').map(async g=>{const live=parseEvents(await source('/Game/Events/'+g.eventId));g.status=live.status;if(live.homeScore!==null){g.homeScore=live.homeScore;g.awayScore=live.awayScore;}}));
+ const fallback=await Promise.allSettled(games.filter(g=>g.date===date&&g.date===today&&g.eventId&&g.status==='reported').map(async g=>{applyGameReport(g,parseEvents(await source('/Game/Events/'+g.eventId)))}));
+ if(fallback.some(result=>result.status==='rejected'))liveFailures.push('Vissa matchrapporter');
  games.forEach(g=>{if(g.date<today&&g.homeScore!==null)g.status='finished';});
  const failed=[...new Set([...groups.filter((_,i)=>results[i].status==='rejected').map(g=>g.name),...liveFailures])];
  const unavailable=results.every(r=>r.status==='rejected');

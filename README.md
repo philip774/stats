@@ -23,6 +23,7 @@ Old-season women's regional competitions are intentionally excluded. This is sen
 ## Features
 
 - Fixtures, results, date navigation, regional and followed-team filters, and live match events.
+- Match-list period/time indicators and a match clock card show reported total playing time, time within the period, three-period progress, intermissions, explicit stoppages, overtime and shootouts. The displayed clock is a source snapshot refreshed every 30 seconds, not a locally simulated running timer.
 - Official total/home/away tables, an expandable full table with wins/losses and overtime/shootout records, team profiles, recent form, upcoming games and previous meetings. Completed games from today join team form as soon as the source confirms a final score.
 - Player search and position/team/minimum-appearance filters, roster position tabs, additional leaderboards and a side-by-side comparison of two players from the same group. Goalkeeper lists show actual appearances and let users set their own minimum; they are not presented as an officially qualified goalie leaderboard.
 - Player profiles with official portraits, age, position, handedness, height, weight, nationality and youth club where available. Season history and individual game logs include ice time and hits when the official league profile supplies them. Regular season and playoff history stay separate; goalkeeper appearances use GPI, not the team-game GP count.
@@ -81,6 +82,8 @@ API endpoints:
 League IDs: `shl`, `allsvenskan`, `hockeyettan`, `hockeytvaan`, `hockeytrean`, `hockeyfyran`, `sdhl`, `ndhl`, `damtvaan`. Omitting `league` preserves the original Hockeytvåan feed. Group IDs are whitelisted in `lib/hockey.mjs`.
 
 The visible app refreshes scores/events every 30 seconds, standings/team profiles every minute and player statistics every two minutes. Server requests are cached briefly. Player statistics are specific to the selected group, not combined across transfers or competitions. Player favorites show freshly fetched statistics when opened; stored favorite rows omit old season figures.
+
+Clock data is read only from the selected game's scoreboard, never calculated from scheduled faceoff or the latest event. Both club names are verified before merging a match report into the schedule or detail view. Periods without a supported time remain visible with an unavailable-time message. Ambiguous clocks and explicit countdown formats do not produce elapsed time. An explicitly ended regulation period establishes its 20-minute boundary; a generic intermission does not establish which period ended. Overtime length and intermission restart times are not guessed. Shootouts have no running game time. Finished matches clear the live clock. Source timestamps older than five minutes, missing timestamps and failed refreshes show a last-reported state, without a current-play indicator. The interface rechecks freshness every 15 seconds and after visibility changes, while source polling stays at 30 seconds.
 
 Form and previous meetings use completed games in the available series schedule. Historical previews exclude games on or after the selected match date. Official rankings and points are read from the source. All match dates use Europe/Stockholm.
 

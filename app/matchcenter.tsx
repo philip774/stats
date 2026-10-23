@@ -11,6 +11,8 @@ import {COMPETITIONS,GROUPS,groupLabel} from '../lib/hockey.mjs';
 import {favoriteRequests,followsTeam,leagueForGame,teamEntry,toggleTeamFavorite} from '../lib/leagues.mjs';
 import {playerKey,readFavoritePlayers} from '../lib/players.mjs';
 import {PlayerProfile,PlayerRows} from './players';
+import {CompactMatchStatus,MatchClockPanel} from './match-clock';
+import {matchStatus} from '../lib/match-status.mjs';
 
 type Feed = {games:Game[]; dates:string[]; teams:string[]; teamGroups:Record<string,string>; failed:string[]; checkedAt:string; error?:string};
 type Page = 'matches'|'live'|'favorites'|'tables';
@@ -19,7 +21,6 @@ const today = () => new Intl.DateTimeFormat('sv-SE',{timeZone:'Europe/Stockholm'
 const shift = (date:string, n:number) => {const d=new Date(date+'T12:00:00Z'); d.setUTCDate(d.getUTCDate()+n); return d.toISOString().slice(0,10)};
 const dateLabel = (date:string, options:Intl.DateTimeFormatOptions) => new Date(date+'T12:00:00Z').toLocaleDateString('sv-SE',options);
 const initials = (name:string) => name.replace(/\b(IF|IK|HC|SK|HK|IS|GIK)\b/g,'').trim().split(/\s+/).map(s=>s[0]).join('').slice(0,2).toUpperCase();
-const statusLabel = (game:Game) => game.status==='live'?'Live':game.status==='finished'?'Slut':game.status==='reported'?'Resultat':game.time;
 
 function Crest({name, large=false}:{name:string;large?:boolean}) {
   const hue = [...name].reduce((n,c)=>n+c.charCodeAt(0),0)%360;
@@ -45,6 +46,7 @@ export default function Matchcenter() {
   const [extraGames,setExtraGames]=useState<Game[]>([]);
   const [extraFailed,setExtraFailed]=useState(false);
   const [loading,setLoading]=useState(true);
+  const [now,setNow]=useState(()=>Date.now());
   const [error,setError]=useState('');
   const [selected,setSelected]=useState<Game|null>(null);
   const [detail,setDetail]=useState<Detail|null>(null);
@@ -61,6 +63,12 @@ export default function Matchcenter() {
   const activeDate=page==='live'?today():date;
   const savedDates=useMemo(()=>[...new Set(saved.map(g=>leagueForGame(g)+'|'+g.date))].sort().join(','),[saved]);
   const favoriteDates=page==='favorites'&&favoriteTab==='games'?savedDates:'';
+
+  useEffect(()=>{
+    const update=()=>setNow(Date.now()),timer=setInterval(update,15000);
+    document.addEventListener('visibilitychange',update);
+    return()=>{clearInterval(timer);document.removeEventListener('visibilitychange',update)};
+  },[]);
 
   useEffect(()=>{
     try {setTeams(readFavoriteTeams(localStorage.getItem('tvaan-favorites')));setSaved(readSavedGames(localStorage.getItem('tvaan-games-v1')));setFavoritePlayers(readFavoritePlayers(localStorage.getItem('tvaan-player-favorites')));const league=localStorage.getItem('tvaan-league');if(COMPETITIONS.some(item=>item.id===league))setCompetition(league!)}catch{}
@@ -109,6 +117,7 @@ export default function Matchcenter() {
 
   const currentGame=selected?([...extraGames,...(feed?.games||[])].find(g=>gameKey(g)===gameKey(selected))||saved.find(g=>gameKey(g)===gameKey(selected))||selected):null;
   const eventId=currentGame?.eventId;
+  const home=currentGame?.home,away=currentGame?.away;
   useEffect(()=>{
     setDetail(null); setDetailError(''); setEventFilter('all');
     if(!eventId)return;
@@ -118,6 +127,7 @@ export default function Matchcenter() {
         const response=await fetch('/api/game?id='+eventId,{signal:controller.signal});
         const result=await response.json() as Detail;
         if(!response.ok)throw new Error(result.error||'Matchhändelser kunde inte hämtas.');
+        if(result.home!==home||result.away!==away)throw new Error('Matchrapporten stämmer inte med vald match.');
         if(!controller.signal.aborted){setDetail(result);setDetailError('')}
       } catch(e) {if(!controller.signal.aborted)setDetailError((e as Error).message)}
     }
@@ -126,7 +136,10 @@ export default function Matchcenter() {
     const visible=()=>{if(document.visibilityState==='visible')load()};
     document.addEventListener('visibilitychange',visible);
     return()=>{controller.abort();clearInterval(timer);document.removeEventListener('visibilitychange',visible)};
-  },[eventId]);
+  },[eventId,home,away]);
+
+  const clockUnavailable=!!detailError||(!detail&&(!!error||(page==='favorites'&&!extraGames.some(g=>currentGame&&gameKey(g)===gameKey(currentGame)))));
+  const currentStatus=currentGame?matchStatus(currentGame,detail,now,clockUnavailable):null;
 
   const modalOpen=!!currentGame||!!sheet||!!profile||!!player;
   useEffect(()=>{
@@ -205,10 +218,11 @@ export default function Matchcenter() {
               <h2 className="group-title"><span className="sweden-flag"/><span>{page==='favorites'?groupLabel(group):group.name}</span>{page==='favorites'&&<time>{dateLabel(sectionDate,{day:'numeric',month:'short'})}</time>}</h2>
               <div className="group-card">{matches.map(game=>{
                 const stale=page==='favorites'&&!freshKeys.has(gameKey(game));
+                const state=matchStatus(game,null,now,stale||!!error||!!feed?.failed.includes(game.group));
                 return <div className="match-row" key={gameKey(game)}>
-                  <button className="match-open" aria-label={`${game.home} mot ${game.away}, ${game.homeScore??'–'}–${game.awayScore??'–'}, ${stale?'senast sparat':statusLabel(game)}`} onClick={()=>openGame(game)}>
-                    <div className={'match-status'+(game.status==='live'&&!stale?' is-live':'')}>{game.status==='live'&&!stale&&<span className="live-dot"/>}<b>{stale&&game.status==='live'?'Sparad':statusLabel(game)}</b>{game.status==='live'&&!stale?<small>Pågår</small>:game.status!=='scheduled'?<small>{game.time}</small>:null}</div>
-                    <div className="match-teams">{[[game.home,game.homeScore],[game.away,game.awayScore]].map(([name,score])=><div className="team-score" key={name as string}><Crest name={name as string}/><span className={followsTeam(teams,name as string,game.groupId)?'followed-team':''}>{name as string}</span><b className={game.status==='live'&&!stale?'live-score':''}>{score??'–'}</b></div>)}</div>
+                  <button className="match-open" aria-label={`${game.home} mot ${game.away}, ${game.homeScore??'–'}–${game.awayScore??'–'}, ${state.label}${state.total?', '+state.total+' spelat':''}`} onClick={()=>openGame(game)}>
+                    <CompactMatchStatus state={state}/>
+                    <div className="match-teams">{[[game.home,game.homeScore],[game.away,game.awayScore]].map(([name,score])=><div className="team-score" key={name as string}><Crest name={name as string}/><span className={followsTeam(teams,name as string,game.groupId)?'followed-team':''}>{name as string}</span><b className={state.live?'live-score':''}>{score??'–'}</b></div>)}</div>
                   </button>
                   <button className={'star-button'+(isSaved(game)?' saved':'')} aria-label={(isSaved(game)?'Ta bort favoritmatch ':'Spara match ')+game.home+' mot '+game.away} aria-pressed={isSaved(game)} onClick={()=>toggleGame(game)}><Star size={21} fill={isSaved(game)?'currentColor':'none'}/></button>
                 </div>;
@@ -227,8 +241,9 @@ export default function Matchcenter() {
       <div className="sheet-header"><h2>{player?'Spelarprofil':profile?'Lagprofil':currentGame?groupLabel(GROUPS.find(g=>g.id===currentGame.groupId)!):sheet==='teams'?'Lägg till lag':sheet==='filters'?'Visa matcher':'TVÅAN'}</h2><button className="icon-button close-button" aria-label="Stäng" onClick={closeModal}><X size={19}/></button></div>
       {player?<PlayerProfile initial={player} saved={favoritePlayers.some(item=>playerKey(item)===playerKey(player))} onToggle={togglePlayer} onTeam={openTeam}/>:profile?<TeamProfile team={profile.team} group={profile.group} followed={followsTeam(teams,profile.team,profile.group)} onFollow={()=>toggleTeam(profile.team,profile.group)} onGame={openGame} onPlayer={openPlayer}/>:currentGame?<>
         <div className="detail-date">{dateLabel(currentGame.date,{weekday:'short',day:'numeric',month:'long'})} · {currentGame.time}</div>
-        <div className="detail-match"><div className="detail-team"><Crest name={currentGame.home} large/><h3><button className="profile-link" onClick={()=>openTeam(currentGame.home,currentGame.groupId)}>{currentGame.home}</button></h3><button aria-label={(followsTeam(teams,currentGame.home,currentGame.groupId)?'Sluta följa ':'Följ ')+currentGame.home} aria-pressed={followsTeam(teams,currentGame.home,currentGame.groupId)} className={'team-follow'+(followsTeam(teams,currentGame.home,currentGame.groupId)?' following':'')} onClick={()=>toggleTeam(currentGame.home,currentGame.groupId)}>{followsTeam(teams,currentGame.home,currentGame.groupId)?<Check size={14}/>:<Plus size={14}/>} {followsTeam(teams,currentGame.home,currentGame.groupId)?'Följer':'Följ lag'}</button></div><div className="detail-score"><span className={(detail?.status||currentGame.status)==='live'?'is-live':''}>{detail?.label||statusLabel(currentGame)}</span><b>{detail?.homeScore??currentGame.homeScore??'–'}<i>–</i>{detail?.awayScore??currentGame.awayScore??'–'}</b></div><div className="detail-team"><Crest name={currentGame.away} large/><h3><button className="profile-link" onClick={()=>openTeam(currentGame.away,currentGame.groupId)}>{currentGame.away}</button></h3><button aria-label={(followsTeam(teams,currentGame.away,currentGame.groupId)?'Sluta följa ':'Följ ')+currentGame.away} aria-pressed={followsTeam(teams,currentGame.away,currentGame.groupId)} className={'team-follow'+(followsTeam(teams,currentGame.away,currentGame.groupId)?' following':'')} onClick={()=>toggleTeam(currentGame.away,currentGame.groupId)}>{followsTeam(teams,currentGame.away,currentGame.groupId)?<Check size={14}/>:<Plus size={14}/>} {followsTeam(teams,currentGame.away,currentGame.groupId)?'Följer':'Följ lag'}</button></div></div>
+        <div className="detail-match"><div className="detail-team"><Crest name={currentGame.home} large/><h3><button className="profile-link" onClick={()=>openTeam(currentGame.home,currentGame.groupId)}>{currentGame.home}</button></h3><button aria-label={(followsTeam(teams,currentGame.home,currentGame.groupId)?'Sluta följa ':'Följ ')+currentGame.home} aria-pressed={followsTeam(teams,currentGame.home,currentGame.groupId)} className={'team-follow'+(followsTeam(teams,currentGame.home,currentGame.groupId)?' following':'')} onClick={()=>toggleTeam(currentGame.home,currentGame.groupId)}>{followsTeam(teams,currentGame.home,currentGame.groupId)?<Check size={14}/>:<Plus size={14}/>} {followsTeam(teams,currentGame.home,currentGame.groupId)?'Följer':'Följ lag'}</button></div><div className="detail-score"><span className={currentStatus?.live?'is-live':''}>{currentStatus?.label}</span><b>{currentStatus?.homeScore??currentGame.homeScore??'–'}<i>–</i>{currentStatus?.awayScore??currentGame.awayScore??'–'}</b></div><div className="detail-team"><Crest name={currentGame.away} large/><h3><button className="profile-link" onClick={()=>openTeam(currentGame.away,currentGame.groupId)}>{currentGame.away}</button></h3><button aria-label={(followsTeam(teams,currentGame.away,currentGame.groupId)?'Sluta följa ':'Följ ')+currentGame.away} aria-pressed={followsTeam(teams,currentGame.away,currentGame.groupId)} className={'team-follow'+(followsTeam(teams,currentGame.away,currentGame.groupId)?' following':'')} onClick={()=>toggleTeam(currentGame.away,currentGame.groupId)}>{followsTeam(teams,currentGame.away,currentGame.groupId)?<Check size={14}/>:<Plus size={14}/>} {followsTeam(teams,currentGame.away,currentGame.groupId)?'Följer':'Följ lag'}</button></div></div>
         <button className={'save-match'+(isSaved(currentGame)?' saved':'')} aria-pressed={isSaved(currentGame)} onClick={()=>toggleGame(currentGame)}><Star size={17} fill={isSaved(currentGame)?'currentColor':'none'}/>{isSaved(currentGame)?'Sparad match':'Spara match'}</button>
+        <MatchClockPanel game={currentGame} detail={detail} now={now} unavailable={clockUnavailable}/>
         {(currentGame.periods||detail?.shots?.length===2)&&<div className="stats-card">{currentGame.periods&&<div><span>Perioder</span><b>{currentGame.periods.replace(/[()]/g,'')}</b></div>}{detail?.shots?.length===2&&<div><span>Skott på mål</span><b>{detail.shots[0]} – {detail.shots[1]}</b></div>}</div>}
         {detailError&&matchTab!=='events'&&<div className="notice error" role="alert"><p>{detailError}{detail?' Senast hämtad statistik visas.':''}</p></div>}<div className="segmented match-tabs">{[['events','Händelser'],['stats','Statistik'],['prediction','Prognos'],['history','Inbördes']].map(([id,name])=><button key={id} className={matchTab===id?'selected':''} aria-pressed={matchTab===id} onClick={()=>setMatchTab(id as typeof matchTab)}>{name}</button>)}</div>{matchTab==='prediction'?<MatchPredictions key={gameKey(currentGame)} game={currentGame} detail={detail} detailError={!!detailError}/>:matchTab==='stats'?<MatchStatistics detail={detail} game={currentGame}/>:matchTab==='history'?<MatchInsights game={currentGame} onGame={openGame}/>:<><div className="event-header"><h3>Händelser</h3><div className="event-switch">{[['all','Alla'],['goals','Mål']].map(([value,name])=><button className={eventFilter===value?'selected':''} aria-pressed={eventFilter===value} key={value} onClick={()=>setEventFilter(value as 'all'|'goals')}>{name}</button>)}</div></div>
         {detailError&&<div className="notice error" role="alert"><Info size={17}/><p>{detailError}{detail?' Senast hämtade händelser visas.':''}</p></div>}
@@ -238,7 +253,7 @@ export default function Matchcenter() {
         <label className="search-field sheet-search"><Search size={18}/><input autoFocus type="search" aria-label="Sök favoritlag" placeholder="Sök ditt lag" value={teamSearch} onChange={e=>setTeamSearch(e.target.value)}/></label>
         <div className="team-picker">{allTeams.filter(team=>team.toLowerCase().includes(teamSearch.toLowerCase())).map(team=>{const group=feed?.teamGroups?.[team];const following=group?followsTeam(teams,team,group):teams.includes(team);return <button disabled={!group} key={team} className="pick-team" aria-label={(following?'Sluta följa ':'Följ ')+team} aria-pressed={following} onClick={()=>group&&toggleTeam(team,group)}><Crest name={team}/><span>{team}</span><Star size={21} className={following?'saved':''} fill={following?'currentColor':'none'}/></button>})}{!allTeams.length&&<p className="quiet-text">{loading?'Hämtar lag…':'Laglistan kunde inte hämtas. Stäng och försök uppdatera.'}</p>}{allTeams.length>0&&!allTeams.some(team=>team.toLowerCase().includes(teamSearch.toLowerCase()))&&<p className="quiet-text">Inga lag matchar sökningen.</p>}</div>
       </>:sheet==='filters'?<div className="filter-options"><h3>Region</h3><div className="filter-list">{regionChoices.map(item=><button aria-pressed={region===item} key={item} onClick={()=>setRegion(item)}><span>{item==='Alla'?'Hela Sverige':'Region '+item}</span>{region===item&&<Check size={20}/>}</button>)}</div><h3>Lag</h3><button className="toggle-row" role="switch" aria-checked={onlyFollowed} onClick={()=>setOnlyFollowed(!onlyFollowed)}><span>Endast mina lag</span><span className={'toggle'+(onlyFollowed?' on':'')}><i/></span></button><button className="primary done-button" onClick={()=>setSheet(null)}>Visa matcher</button></div>:
-      <div className="about-content"><h4 className="appearance-heading">Utseende</h4><ThemePicker theme={theme} onChange={setTheme}/><div className="app-icon">II</div><h3>Svensk hockey. I fickan.</h3><p>Matcher, liveresultat, spelarprofiler och dina favoriter. Alla sex herrnivåer från SHL till Hockeyfyran, plus SDHL, NDHL och Damtvåan. 36 seriegrupper under säsongen 2026/27.</p><h4>Mer än resultat</h4><p>Jämför spelare, följ poängligor och utforska lagens powerplay, boxplay och publik. Spelarprofiler kan ha porträtt, matchlogg och karriärstatistik från både svenska och utländska ligor. I Karriär finns ligafilter, summeringar och lag per säsong. NHL-data kan komplettera med nordamerikanska säsonger, karriärsummor, draft och utmärkelser. I matchens Statistik finns publicerade laguppställningar och domare. Historiken kan vara ofullständig och exakta övergångsdatum ingår inte.</p><h4>Matchprognoser</h4><p>I matchens Prognos-flik finns uppskattad vinstchans efter 60 minuter, nästa mål och förväntade mål. Samma modell används i alla serier. Livevärden kräver en färsk rapporterad klocka; tidiga serier kan sakna tillräckligt matchunderlag.</p><h4>Lägg till på hemskärmen</h4><p>Öppna appen i Safari på din iPhone. Tryck på Dela och välj Lägg till på hemskärmen.</p><h4>Live & favoriter</h4><p>Resultat och händelser hämtas från Swehockey var 30:e sekund när appen är öppen och synlig. Rapporteringen kan vara fördröjd. Favoritlag, matcher och spelare sparas på den här enheten. Tillgängliga uppgifter varierar mellan serierna. Pushnotiser ingår inte.</p><a className="about-source" href="https://stats.swehockey.se" target="_blank" rel="noreferrer">Statistik från Swehockey <ArrowUpRight size={15}/></a><p className="fine-print">Fristående app med en egen feed från Swehockeys officiella sidor.</p></div>}
+      <div className="about-content"><h4 className="appearance-heading">Utseende</h4><ThemePicker theme={theme} onChange={setTheme}/><div className="app-icon">II</div><h3>Svensk hockey. I fickan.</h3><p>Matcher, liveresultat, spelarprofiler och dina favoriter. Alla sex herrnivåer från SHL till Hockeyfyran, plus SDHL, NDHL och Damtvåan. 36 seriegrupper under säsongen 2026/27.</p><h4>Mer än resultat</h4><p>Jämför spelare, följ poängligor och utforska lagens powerplay, boxplay och publik. Spelarprofiler kan ha porträtt, matchlogg och karriärstatistik från både svenska och utländska ligor. I Karriär finns ligafilter, summeringar och lag per säsong. NHL-data kan komplettera med nordamerikanska säsonger, karriärsummor, draft och utmärkelser. I matchens Statistik finns publicerade laguppställningar och domare. Historiken kan vara ofullständig och exakta övergångsdatum ingår inte.</p><h4>Matchprognoser</h4><p>I matchens Prognos-flik finns uppskattad vinstchans efter 60 minuter, nästa mål och förväntade mål. Samma modell används i alla serier. Livevärden kräver en färsk rapporterad klocka; tidiga serier kan sakna tillräckligt matchunderlag.</p><h4>Lägg till på hemskärmen</h4><p>Öppna appen i Safari på din iPhone. Tryck på Dela och välj Lägg till på hemskärmen.</p><h4>Live & favoriter</h4><p>Resultat och händelser hämtas från Swehockey var 30:e sekund när appen är öppen och synlig. Matchlistan och matchvyn visar rapporterad period, speltid och periodpaus. Klockan visar källans senaste uppgift och tickar inte fram mellan rapporterna. Rapporteringen kan vara fördröjd. Favoritlag, matcher och spelare sparas på den här enheten. Tillgängliga uppgifter varierar mellan serierna. Pushnotiser ingår inte.</p><a className="about-source" href="https://stats.swehockey.se" target="_blank" rel="noreferrer">Statistik från Swehockey <ArrowUpRight size={15}/></a><p className="fine-print">Fristående app med en egen feed från Swehockeys officiella sidor.</p></div>}
     </section></div>}
   </>;
 }

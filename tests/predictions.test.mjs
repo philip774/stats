@@ -47,8 +47,8 @@ test('clock is read only from the scoreboard, never from latest event or planned
  const detail=parseEvents('<h2>A - B</h2><td class="tdInfoArea">3 - 1</td>'+row);assert.equal(detail.clock,null);assert.equal(detail.status,'live');
  assert.equal(parseMatchClock('3 - 1 Period 2 12:30').elapsedSeconds,1950);
  assert.equal(parseMatchClock('3 - 1 2nd Period 32:30').elapsedSeconds,1950);
- assert.equal(parseMatchClock('3 - 1 Period 2 20:00'),null);
- assert.equal(parseMatchClock('3 - 1 Period 2 12:30 remaining'),null);
+ assert.equal(parseMatchClock('3 - 1 Period 2 20:00').elapsedSeconds,null);
+ assert.equal(parseMatchClock('3 - 1 Period 2 12:30 remaining').elapsedSeconds,null);
  assert.equal(parseMatchClock('3 - 1 Final Score'),null);
  assert.equal(parseMatchClock('3 - 1 Overtime').phase,'overtime');
 });
