@@ -27,6 +27,8 @@ Old-season women's regional competitions are intentionally excluded. This is sen
 - Player search and position/team/minimum-appearance filters, roster position tabs, additional leaderboards and a side-by-side comparison of two players from the same group. Goalkeeper lists show actual appearances and let users set their own minimum; they are not presented as an officially qualified goalie leaderboard.
 - Player profiles with official portraits, age, position, handedness, height, weight, nationality and youth club where available. Season history and individual game logs include ice time and hits when the official league profile supplies them. Regular season and playoff history stay separate; goalkeeper appearances use GPI, not the team-game GP count.
 - A dedicated career view includes international seasons supplied by the official profile, league/competition-stage filters, totals for the displayed records, separate league/stage summaries and a season-by-season club timeline. Missing figures are not treated as zeroes, duplicate/aggregate rows are not counted twice, and goalkeeper save percentages use total saves and goals against rather than averaging percentages.
+- Verified NHL profiles add official NHL career totals, draft year/team/round/pick, trophies and published North-American seasons. Extra NHL statistics include shots, shooting percentage, special teams, ice time and goalie wins/losses/saves. NHL portraits are a fallback when no verified local portrait exists.
+- Match Statistics has an expandable official lineup: both clubs' goalkeepers, line units, extra players, coaches, referees and linesmen. The away team's visually reversed units are sorted for reading; starting players/goalkeepers are not inferred from order or colour.
 - Season goals, assists, points, appearances, penalty minutes, game-winning/powerplay/shorthanded goals. Where published: plus/minus, shots, shooting percentage and faceoff statistics.
 - Goalkeeper appearances, save percentage, GAA, saves, shots against, goals against, shutouts, wins/losses and ice time.
 - The selected league, followed teams, saved games and favorite players are retained on the device. Same-named clubs in different competitions have separate favorites.
@@ -74,6 +76,7 @@ API endpoints:
 - `/api/player?group=GROUP_ID&name=SOURCE_NAME&team=TEAM_NAME`
 - `/api/team-stats?group=GROUP_ID`
 - `/api/prediction?group=GROUP_ID&date=YYYY-MM-DD&home=HOME_TEAM&away=AWAY_TEAM`
+- `/api/lineup?id=GAME_ID`
 
 League IDs: `shl`, `allsvenskan`, `hockeyettan`, `hockeytvaan`, `hockeytrean`, `hockeyfyran`, `sdhl`, `ndhl`, `damtvaan`. Omitting `league` preserves the original Hockeytvåan feed. Group IDs are whitelisted in `lib/hockey.mjs`.
 
@@ -91,13 +94,25 @@ The primary 2026/27 stats remain Swehockey's group-specific figures; a second pr
 
 ### Career coverage and transfers
 
-The career tab currently uses the historical records returned by verified SHL/SDHL profiles. These can include earlier Swedish clubs and foreign leagues (for example AHL). This is not a worldwide lifetime database: the provider can omit years, leagues, junior seasons and national-team tournaments. Other players have an explicit unavailable-history state. A current-season group total is never silently relabeled as a lifetime total.
+The career tab combines historical records returned by verified SHL/SDHL profiles with verified NHL public player profiles. Local profiles can include earlier Swedish clubs and foreign leagues. NHL adds published NHL/AHL/ECHL/OHL/WHL/QMJHL/NCAA/USHL seasons. Other NHL feed league aliases and unknown competition stages are excluded from this import to avoid uncertain joins. This is not a worldwide lifetime database: providers can omit years, leagues, junior seasons and national-team tournaments. Other players have an explicit unavailable-history state. A current-season group total is never silently relabeled as a lifetime total.
 
 Career sums apply only to the displayed records. Regular season, playoffs and unspecified stages retain their own groups; a missing stage is never assumed to be the regular season. Conflicting duplicate records disable the affected summary. GAA is displayed per season and is not summed or averaged across seasons.
 
 Club history lists clubs by season; it does not infer confirmed transfers, loans, dates or intra-season movement order. Broad worldwide careers and confirmed transfer records require an additional provider. The [Elite Prospects API](https://docs.api.eliteprospects.com/) documents career statistics and transfers; its [coverage/history options](https://developer.eliteprospects.com/pricing) require a suitable account, API access and licensed coverage. No Elite Prospects API integration or credentials are included in this repository. Even a wider provider cannot establish records that were never recorded.
 
 The original Sites checkout and temporary research/build artifacts are retained locally but excluded from this GitHub repository. This version uses standard Next.js for Vercel and has no Sites/Cloudflare dependency.
+
+### Additional keyless sources — checked 23 October 2026
+
+NHL player lookup uses the public JSON services `search.d3.nhle.com/api/v1/search/player` and `api-web.nhle.com/v1/player/{id}/landing`. These responded without an API key. They are not a documented, supported developer contract and may change. The app does not add NHL game coverage to the Swedish competition selector; this source supplements player careers only.
+
+Name lookup alone never attaches a career. A fresh Swehockey roster identity must have a birthdate, the landing profile's name and birthdate must both match, and exactly one verified candidate must remain. Missing or ambiguous identities are skipped. Lookup/profile responses are cached for six hours in a bounded in-memory cache; only an opened player is looked up, not every roster. An unavailable secondary provider does not remove the other provider's available data.
+
+For overlapping North-American season/league/stage groups, NHL rows replace the corresponding local-profile rows. Older rows whose phase is unspecified are removed when NHL supplies known phases for that season/league. Published official NHL career totals are labeled specifically as NHL, kept separate for regular season/playoffs, and are not presented as worldwide totals. Fractions are converted to percentages, and goalie saves are derived only when both shots against and goals against are available. The original current Swedish season statistics are never overwritten. For example, Oskar Lindblom's verified NHL profile returned 337 regular-season games and 112 points, draft pick 138 in 2014, and the 2020/21 Bill Masterton Memorial Trophy.
+
+Lineups use Swehockey's public `/Game/LineUps/{id}` page and are fetched only when the panel is opened, then refreshed every minute while visible. Match club names are checked against the selected fixture before rendering. A missing match ID or unpublished lineup is explained. The API route returns source timestamps and a source link.
+
+Other sources researched but not connected: [API-Sports Hockey](https://api-sports.io/sports/hockey) advertises a 100-request/day free plan, which is insufficient for continuous 30-second polling without a different update strategy. Its published Swedish coverage does not list Hockeytvåan/Hockeytrean/Hockeyfyran. [Elite Prospects' Explorer licence](https://developer.eliteprospects.com/legal/terms) limits the free tier to evaluation/internal testing rather than a public production app. No account, key, paid subscription or new environment variable was added.
 
 ### Match predictions
 

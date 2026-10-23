@@ -1,0 +1,14 @@
+import {ArrowUpRight} from 'lucide-react';
+import type {NhlProfile,NhlStats} from '../lib/types';
+const value=(n:number|null|undefined)=>typeof n==='number'&&Number.isFinite(n)?n.toLocaleString('sv-SE',{maximumFractionDigits:2}):'–';
+
+export function NhlMerits({data,goalie}:{data:NhlProfile;goalie:boolean}){
+ const stages:[string,NhlStats][]=[];if(data.regular)stages.push(['Grundserie',data.regular]);if(data.playoffs)stages.push(['Slutspel',data.playoffs]);
+ const regular=data.regular;
+ const extra:[string,number|null|undefined][] =goalie?[['Vinster',regular?.wins],['Förluster',regular?.losses],['Förluster i förlängning',regular?.overtimeLosses],['Räddningar',regular?.saves],['Skott emot',regular?.shotsAgainst]]:[['Skott på mål',regular?.shots],['Skottprocent',regular?.shootingPercentage],['Powerplaymål',regular?.powerPlayGoals],['Poäng i powerplay',regular?.powerPlayPoints],['Boxplaymål',regular?.shortHandedGoals],['Matchavgörande mål',regular?.gameWinningGoals]];
+ return <details className="nhl-merits"><summary>{regular?.played?'NHL-meriter · '+regular.played+' matcher':'NHL-profil & draft'}</summary><p className="table-key">NHL-karriär totalt. Grundserie och slutspel visas separat.</p>{stages.length>0&&<div className="scroll-table"><table className="history-table nhl-totals"><caption className="sr-only">Officiella NHL-karriärsummor</caption><thead><tr><th>NHL</th><th>M</th>{goalie?<><th>SVS %</th><th>GAA</th><th>Nollor</th></>:<><th>G</th><th>A</th><th>P</th></>}</tr></thead><tbody>{stages.map(([label,row])=><tr key={label}><th>{label}</th>{(goalie?[row.played,row.savePercentage,row.gaa,row.shutouts]:[row.played,row.goals,row.assists,row.points]).map((n,i)=><td key={i}>{value(n)}</td>)}</tr>)}</tbody></table></div>}
+ {data.draft&&<div className="nhl-draft"><h4>NHL-draft {data.draft.year}</h4><p>{data.draft.team}{data.draft.round!==null?' · runda '+data.draft.round:''}{data.draft.pick!==null?' · totalt #'+data.draft.pick:''}</p></div>}
+ {extra.some(([,n])=>n!=null)&&<details className="expanded-player-stats"><summary>Mer NHL-statistik · grundserie</summary><div className="stats-card profile-stats">{extra.filter(([,n])=>n!=null).map(([label,n])=><div key={label}><span>{label}</span><b>{value(n)}{label==='Skottprocent'?' %':''}</b></div>)}{regular?.averageIceTime&&<div><span>Snittspeltid</span><b>{regular.averageIceTime}</b></div>}{regular?.iceTime&&<div><span>Speltid totalt</span><b>{regular.iceTime}</b></div>}</div></details>}
+ {data.awards.length>0&&<div className="nhl-awards"><h4>Utmärkelser</h4>{data.awards.map(award=><p key={award.name}><b>{award.name}</b><small>{award.seasons.join(' · ')}</small></p>)}</div>}
+ <a className="player-source" href={data.sourceUrl} target="_blank" rel="noreferrer">Karriäruppgifter hos NHL <ArrowUpRight size={14}/></a></details>;
+}

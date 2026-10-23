@@ -3,6 +3,7 @@ import {useEffect,useState} from 'react';
 import {ChevronRight,RefreshCw,Star,Trophy} from 'lucide-react';
 import {GROUPS,groupsForLeague,groupLabel} from '../lib/hockey.mjs';
 import {followsTeam} from '../lib/leagues.mjs';
+import {MatchLineups} from './match-lineups';
 import {PlayerDirectory,TeamRoster} from './players';
 import {TeamLeaders,TeamAdvancedStats} from './team-statistics';
 import {headToHead,teamSummary} from '../lib/statistics.mjs';
@@ -45,7 +46,7 @@ export function TeamProfile({team,group,followed,onFollow,onGame,onPlayer}:{team
 export function MatchStatistics({detail,game}:{detail:Detail|null;game:Game}){
   const metrics=detail?.metrics;
   const rows=[{key:'shots',label:'Skott på mål',suffix:''},{key:'saves',label:'Räddningar',suffix:''},{key:'penaltyMinutes',label:'Utvisningsminuter',suffix:''},{key:'powerPlay',label:'Powerplay',suffix:' %'}] as const;
-  return <div className="match-statistics"><div className="stat-team-labels"><span>{game.home}</span><span>{game.away}</span></div>{rows.map(({key,label,suffix})=>{const values=metrics?.[key]||(key==='shots'&&detail?.shots?.length===2?detail.shots:null);if(!values)return null;const sum=values[0]+values[1];return <div className="comparison-stat" key={key}><div><b>{values[0].toLocaleString('sv-SE')}{suffix}</b><span>{label}</span><b>{values[1].toLocaleString('sv-SE')}{suffix}</b></div><div className="stat-bars"><i style={{width:(sum?values[0]/sum*100:50)+'%'}}/><i style={{width:(sum?values[1]/sum*100:50)+'%'}}/></div></div>})}{!rows.some(row=>metrics?.[row.key])&&!detail?.shots?.length&&<p className="quiet-text">Statistik visas när arrangören rapporterar den.</p>}{detail?.attendance!==null&&detail?.attendance!==undefined&&<p className="table-key">Publik: {detail.attendance}</p>}</div>;
+  return <div className="match-statistics"><div className="stat-team-labels"><span>{game.home}</span><span>{game.away}</span></div>{rows.map(({key,label,suffix})=>{const values=metrics?.[key]||(key==='shots'&&detail?.shots?.length===2?detail.shots:null);if(!values)return null;const sum=values[0]+values[1];return <div className="comparison-stat" key={key}><div><b>{values[0].toLocaleString('sv-SE')}{suffix}</b><span>{label}</span><b>{values[1].toLocaleString('sv-SE')}{suffix}</b></div><div className="stat-bars"><i style={{width:(sum?values[0]/sum*100:50)+'%'}}/><i style={{width:(sum?values[1]/sum*100:50)+'%'}}/></div></div>})}{!rows.some(row=>metrics?.[row.key])&&!detail?.shots?.length&&<p className="quiet-text">Statistik visas när arrangören rapporterar den.</p>}{detail?.attendance!==null&&detail?.attendance!==undefined&&<p className="table-key">Publik: {detail.attendance}</p>}<MatchLineups key={game.id} game={game}/></div>;
 }
 
 export function MatchInsights({game,onGame}:{game:Game;onGame:(game:Game)=>void}){

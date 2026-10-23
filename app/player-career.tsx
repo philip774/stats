@@ -6,7 +6,7 @@ import type {SeasonRecord} from '../lib/types';
 const value=(n:number|null|undefined)=>typeof n==='number'&&Number.isFinite(n)?n.toLocaleString('sv-SE',{maximumFractionDigits:2}):'–';
 const shortSeason=(season:string)=>season.replace(/\/(\d{2})(\d{2})$/,'/$2');
 
-export function PlayerCareer({history,goalie,loading}:{history:SeasonRecord[];goalie:boolean;loading:boolean}){
+export function PlayerCareer({history,goalie,loading,hasNhl=false}:{history:SeasonRecord[];goalie:boolean;loading:boolean;hasNhl?:boolean}){
  const [league,setLeague]=useState('all'),[stage,setStage]=useState('all');
  const {rows}=prepareCareer(history) as {rows:SeasonRecord[]};
  const leagues=[...new Map(rows.map(row=>[careerLeagueKey(row),row.competition||'Liga ej angiven'])).entries()].sort((a,b)=>a[1].localeCompare(b[1],'sv'));
@@ -19,7 +19,7 @@ export function PlayerCareer({history,goalie,loading}:{history:SeasonRecord[];go
  const summary=goalie?[['Matcher',totals.played],['SVS %',totals.savePercentage],['Nollor',totals.shutouts]]:[['Matcher',totals.played],['Mål',totals.goals],['Assist',totals.assists],['Poäng',totals.points]];
  return <section className="player-career" aria-label="Spelarens karriär">
   <div className="career-intro"><span>PUBLICERAD KARRIÄR</span><h4>{shortSeason(seasons[0])}{seasons.length>1?' – '+shortSeason(seasons[seasons.length-1]):''}</h4><p>{seasons.length} {seasons.length===1?'säsong':'säsonger'} · {clubCount} lag · {leagues.length} {leagues.length===1?'liga':'ligor'}</p></div>
-  <p className="career-coverage">Visar säsongerna i ligans profil, även utländska ligor. Tidigare år och tävlingar kan saknas.</p>
+  <p className="career-coverage">Visar publicerade säsonger från {hasNhl?'NHL och ligans profil':'ligans profil'}, även utländska ligor. Tidigare år och tävlingar kan saknas.</p>
   <div className="career-filters"><label>Liga<select aria-label="Karriärliga" value={league} onChange={e=>setLeague(e.target.value)}><option value="all">Alla ligor</option>{leagues.map(([id,label])=><option key={id} value={id}>{label}</option>)}</select></label><label>Tävlingsfas<select aria-label="Karriärens tävlingsfas" value={stage} onChange={e=>setStage(e.target.value)}><option value="all">Alla faser</option>{stages.map(id=><option key={id} value={id}>{careerStageLabel(id)}</option>)}</select></label></div>
   {visible.length>0?<>
    <h4 className="profile-heading">Summerat för ditt urval</h4>
